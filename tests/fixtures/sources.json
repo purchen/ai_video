@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "schemaVersion": 1,
+      "id": "official-night-school-notice",
+      "url": "https://example.com/night-school-notice",
+      "title": "城市夜校报名服务公告",
+      "publisher": "市民服务中心",
+      "summary": "公告称夜校报名服务已延长。",
+      "sourceType": "official-data",
+      "evidenceWeight": "high",
+      "capturedAt": "2026-09-01T00:00:00.000Z",
+      "claim": {
+        "key": "night-school-registration-extended",
+        "value": "affirmed",
+        "text": "夜校报名服务已延长。"
+      }
+    }
+  ]
+}
