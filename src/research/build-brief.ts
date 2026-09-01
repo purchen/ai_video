@@ -19,6 +19,11 @@ export type ResearchSource = SourceRecord & { claim?: ExplicitClaim };
 
 const researchSourceSchema = sourceRecordSchema.extend({ claim: claimSchema.optional() });
 const sourcesArtifactSchema = z.object({ schemaVersion: z.literal(1), sources: z.array(researchSourceSchema) });
+const everydayCommonSenseNoteSchema = z.object({
+  kind: z.literal('everyday-common-sense'),
+  text: z.string().min(1),
+  lens: z.string().min(1).optional(),
+});
 
 export interface ConfirmedFact {
   claimKey: string;
@@ -33,10 +38,13 @@ export interface ClaimConflict {
   resolution: 'unresolved';
 }
 
-export interface ExplanationNote {
+export interface SourceExplanationNote {
   sourceId: string;
   text: string;
 }
+
+export type EverydayCommonSenseExplanationNote = z.infer<typeof everydayCommonSenseNoteSchema>;
+export type ExplanationNote = SourceExplanationNote | EverydayCommonSenseExplanationNote;
 
 export interface ResearchBrief {
   topic: Pick<TopicCandidate, 'title' | 'normalizedTopic' | 'questionHook'>;
@@ -55,12 +63,25 @@ export interface ResearchArtifactOptions {
   outputDirectory: string;
 }
 
+export interface BuildResearchBriefOptions {
+  /**
+   * Non-evidentiary context for framing a lens. It is intentionally separate
+   * from source records and can never create facts or conflicts.
+   */
+  explanationNotes?: EverydayCommonSenseExplanationNote[];
+}
+
 /**
  * Builds a deterministic brief from explicit claims. A claim needs key, value,
  * and text; title and summary are never interpreted as claims.
  */
-export function buildResearchBrief(topic: TopicCandidate, sources: ResearchSource[]): ResearchBrief {
+export function buildResearchBrief(
+  topic: TopicCandidate,
+  sources: ResearchSource[],
+  options: BuildResearchBriefOptions = {},
+): ResearchBrief {
   const validatedSources = sources.map((source) => researchSourceSchema.parse(source));
+  const commonSenseNotes = (options.explanationNotes ?? []).map((note) => everydayCommonSenseNoteSchema.parse(note));
   const factClaims = validatedSources.filter(hasFactClaim);
   const conflicts = detectConflicts(factClaims);
   const conflictedKeys = new Set(conflicts.map((conflict) => conflict.claimKey));
@@ -69,10 +90,11 @@ export function buildResearchBrief(topic: TopicCandidate, sources: ResearchSourc
     .filter((source) => classifySource(source).allowedUses.includes('public-question'))
     .map((source) => source.summary)
     .sort(lexical);
-  const explanationNotes = validatedSources
+  const sourceExplanationNotes: SourceExplanationNote[] = validatedSources
     .filter((source) => classifySource(source).allowedUses.includes('mechanism'))
     .map((source) => ({ sourceId: source.id, text: source.claim?.text ?? source.summary }))
     .sort((left, right) => lexical(left.sourceId, right.sourceId));
+  const explanationNotes = [...sourceExplanationNotes, ...commonSenseNotes];
   const unknowns = [
     ...conflicts.map((conflict) => `Unresolved claim: ${conflict.claimKey}`),
     ...(confirmedFacts.length === 0 ? ['No supported, explicit event claim is confirmed.'] : []),
@@ -181,13 +203,18 @@ function renderResearchBrief(brief: ResearchBrief): string {
     ...renderItems(brief.publicQuestions),
     '',
     '## Explanation notes',
-    ...renderItems(brief.explanationNotes.map((note) => `${note.text} [${note.sourceId}]`)),
+    ...renderItems(brief.explanationNotes.map(renderExplanationNote)),
     '',
   ].join('\n');
 }
 
 function renderItems(items: string[]): string[] {
   return items.length > 0 ? items.map((item) => `- ${item}`) : ['- None'];
+}
+
+function renderExplanationNote(note: ExplanationNote): string {
+  if ('sourceId' in note) return `${note.text} [${note.sourceId}]`;
+  return note.lens ? `${note.text} [everyday-common-sense; ${note.lens}]` : `${note.text} [everyday-common-sense]`;
 }
 
 function lexical(left: string, right: string): number {
