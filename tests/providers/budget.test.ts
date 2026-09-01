@@ -24,4 +24,14 @@ describe('BudgetGuard', () => {
     expect(() => guard.assertAllowed({ providerId: 'openai-tts', currency: 'CNY', amount: 1, basis: 'chars' }))
       .not.toThrow();
   });
+
+  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    'rejects an invalid amount of %s before applying budget policy',
+    (amount) => {
+      const guard = new BudgetGuard({ spentCny: 0, dryRun: true });
+
+      expect(() => guard.assertAllowed({ providerId: 'openai-tts', currency: 'CNY', amount, basis: 'chars' }))
+        .toThrow('Cost estimate amount must be a finite, non-negative CNY value');
+    },
+  );
 });

@@ -19,6 +19,10 @@ export class BudgetGuard {
   constructor(private readonly options: BudgetGuardOptions) {}
 
   assertAllowed(estimate: CostEstimate): void {
+    if (!Number.isFinite(estimate.amount) || estimate.amount < 0) {
+      throw new Error('Cost estimate amount must be a finite, non-negative CNY value');
+    }
+
     if (this.options.dryRun || estimate.amount === 0) return;
 
     const remaining = (this.options.limitCny ?? 0) - this.options.spentCny;
