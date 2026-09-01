@@ -12,6 +12,7 @@ import {
   manualVoicePackageMarkerSchema,
   manualVoicePackageSchema,
   readManualVoicePackage,
+  type ManualAudioAuthorization,
 } from '../../src/providers/tts/manual';
 import {
   nodeVoiceArtifactIo,
@@ -85,16 +86,16 @@ describe('transactional manual voice package', () => {
     await expect(readManualVoicePackage(context.store)).rejects.toThrow('manual voice package is not committed');
   });
 
-  it('does not reuse an old package marker after a second-write failure', async () => {
+  it('keeps the old package readable after a second-write failure', async () => {
     const context = await manualContext();
-    await expect(readManualVoicePackage(context.store)).resolves.toMatchObject({ package: { schemaVersion: 1 } });
+    const previous = await readManualVoicePackage(context.store);
     await expect(createManualVoicePackage({
       store: context.store,
       requestedScriptHash: context.approvedScript.scriptHash,
       now: () => now,
       artifactIo: failingPackageIo('text'),
     })).rejects.toThrow('injected package text failure');
-    await expect(readManualVoicePackage(context.store)).rejects.toThrow('manual voice package is not committed');
+    expect((await readManualVoicePackage(context.store)).package.transactionId).toBe(previous.package.transactionId);
   });
 
   it('rejects an old package marker after the durable approved script changes', async () => {
@@ -107,6 +108,26 @@ describe('transactional manual voice package', () => {
 });
 
 describe('authorized manual voice import', () => {
+  it.each([
+    ['Jianying source with user authorization', {
+      ...userAuthorization(), sourceKind: 'jianying-synthetic', voiceKind: 'cloned',
+    }],
+    ['cloned source with synthetic authorization', {
+      ...syntheticAuthorization(), sourceKind: 'cloned', voiceKind: 'cloned',
+    }],
+    ['cloned source with similar-person voice kind', {
+      ...userAuthorization(), sourceKind: 'cloned', voiceKind: 'similar-real-person',
+    }],
+    ['similar-person source with cloned voice kind', {
+      ...similarAuthorization(), voiceKind: 'cloned',
+    }],
+    ['cloned source without owner', {
+      ...userAuthorization(), owner: undefined,
+    }],
+  ] as const)('schema rejects contradictory rights: %s', (_label, record) => {
+    expect(() => manualAudioAuthorizationSchema.parse(record)).toThrow();
+  });
+
   it('rejects import against an empty store before conversion or artifact writes', async () => {
     const context = await manualContext({ durable: false, createPackage: false });
     await expect(importManualVoice({
@@ -130,8 +151,8 @@ describe('authorized manual voice import', () => {
     const context = await manualContext();
     await expect(importManualVoice({
       ...context,
-      authorization: { ...syntheticAuthorization(), sourceKind: 'cloned' },
-    })).rejects.toThrow('synthetic audio must use the Jianying synthetic source kind');
+      authorization: { ...syntheticAuthorization(), sourceKind: 'cloned' } as unknown as ManualAudioAuthorization,
+    })).rejects.toThrow();
     expect(context.convertCalls).toBe(0);
   });
 
@@ -157,14 +178,14 @@ describe('authorized manual voice import', () => {
     await expect(importManualVoice({ ...context, authorization: syntheticAuthorization() })).rejects.toThrow(
       'manual voice duration must be between 55 and 130 seconds',
     );
-    await expect(readCommittedVoice(context.store)).rejects.toThrow('voice publication is not committed');
+    await expect(readCommittedVoice(context.store, context.probe)).rejects.toThrow('voice publication is not committed');
   });
 
   it('commits a 48 kHz PCM WAV with explicit Jianying synthetic rights', async () => {
     const context = await manualContext();
     const rights = manualAudioAuthorizationSchema.parse(syntheticAuthorization());
     await importManualVoice({ ...context, authorization: rights });
-    const committed = await readCommittedVoice(context.store);
+    const committed = await readCommittedVoice(context.store, context.probe);
 
     expect(context.convertedSampleRate).toBe(48_000);
     expect(voiceReportSchema.parse(committed.report)).toMatchObject({
@@ -193,7 +214,7 @@ describe('authorized manual voice import', () => {
     const context = await manualContext();
     const rights = manualAudioAuthorizationSchema.parse(userAuthorization());
     await importManualVoice({ ...context, authorization: rights });
-    const committed = await readCommittedVoice(context.store);
+    const committed = await readCommittedVoice(context.store, context.probe);
     expect(committed.report).toMatchObject({
       providerId: 'external-manual',
       voiceId: 'person-a',
@@ -213,15 +234,30 @@ describe('authorized manual voice import', () => {
     await expect(importManualVoice({ ...context, authorization: syntheticAuthorization() })).rejects.toThrow(
       'authoritative voice master must be 48 kHz PCM WAV',
     );
-    await expect(readCommittedVoice(context.store)).rejects.toThrow('voice publication is not committed');
+    await expect(readCommittedVoice(context.store, context.probe)).rejects.toThrow('voice publication is not committed');
   });
 
-  it('does not commit READY when probing converted audio fails', async () => {
+  it('keeps an old committed manual voice readable when a later conversion fails', async () => {
+    const previousContext = await manualContext();
+    await importManualVoice({ ...previousContext, authorization: syntheticAuthorization() });
+    const previous = await readCommittedVoice(previousContext.store, previousContext.probe);
+    const failingProbe: AudioProbe = { probe: async () => { throw new Error('converted wav is invalid'); } };
+    await expect(importManualVoice({
+      ...previousContext,
+      attemptId: '00000000-0000-4000-8000-000000000032',
+      probe: failingProbe,
+      authorization: syntheticAuthorization(),
+    })).rejects.toThrow('converted wav is invalid');
+    expect((await readCommittedVoice(previousContext.store, previousContext.probe)).report.transactionId)
+      .toBe(previous.report.transactionId);
+  });
+
+  it('does not commit READY when the first converted audio probe fails', async () => {
     const context = await manualContext({ probeError: new Error('converted wav is invalid') });
     await expect(importManualVoice({ ...context, authorization: syntheticAuthorization() })).rejects.toThrow(
       'converted wav is invalid',
     );
-    await expect(readCommittedVoice(context.store)).rejects.toThrow('voice publication is not committed');
+    await expect(readCommittedVoice(context.store, context.probe)).rejects.toThrow('voice publication is not committed');
   });
 
   it('rejects PATH-based ffmpeg and ffprobe assumptions', () => {
@@ -276,6 +312,7 @@ async function manualContext(options: {
   };
   return {
     approvedScript,
+    attemptId: '00000000-0000-4000-8000-000000000031',
     requestedScriptHash: approvedScript.scriptHash,
     audioPath,
     store,
@@ -312,6 +349,20 @@ function userAuthorization() {
     authorizedBy: 'Person A',
     authorizedAt: now,
     consentReference: 'consent://person-a/manual-audio',
+  };
+}
+
+function similarAuthorization() {
+  return {
+    schemaVersion: 1 as const,
+    authorization: 'user-authorized' as const,
+    sourceKind: 'similar-real-person' as const,
+    voiceKind: 'similar-real-person' as const,
+    voiceId: 'person-similar-a',
+    owner: 'Person A',
+    authorizedBy: 'Person A',
+    authorizedAt: now,
+    consentReference: 'consent://person-a/similar-voice',
   };
 }
 

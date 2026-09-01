@@ -87,6 +87,11 @@ export const voiceChargeSchema = z.object({
   projectId: z.string().min(1),
   approvedScriptHash: sha256Schema,
   providerId: z.string().min(1),
+  reservationId: transactionIdSchema,
+  idempotencyKey: z.string().min(1),
+  authorizedMaxCny: z.number().finite().nonnegative(),
+  remainingAtAuthorizationCny: z.number().finite().nonnegative(),
+  budgetScope: z.literal('single-process; multi-process requires Task9 project lock'),
   estimate: costRecordSchema,
   actual: costRecordSchema,
   status: z.enum(['SETTLED_WITHIN_AUTHORIZATION', 'SETTLED_OVER_AUTHORIZATION']),
@@ -98,6 +103,83 @@ export const voiceChargeSchema = z.object({
       message: 'charge providers must match the transaction provider',
     });
   }
+  if (charge.authorizedMaxCny !== charge.estimate.amount) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'authorized maximum must equal the audited estimate',
+    });
+  }
+  if (charge.reservationId !== charge.transactionId
+    || !charge.idempotencyKey.endsWith(
+      `:${charge.projectId}:${charge.approvedScriptHash}:${charge.transactionId}`,
+    )) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'charge reservation and idempotency key must bind the project transaction',
+    });
+  }
+  const within = charge.actual.amount <= charge.authorizedMaxCny
+    && charge.actual.amount <= charge.remainingAtAuthorizationCny;
+  if ((charge.status === 'SETTLED_WITHIN_AUTHORIZATION') !== within) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'charge status must agree with reservation authorization limits',
+    });
+  }
+});
+
+export const voiceAttemptAuditSchema = z.object({
+  schemaVersion: z.literal(1),
+  attemptId: transactionIdSchema,
+  transactionId: transactionIdSchema,
+  projectId: z.string().min(1),
+  approvedScriptHash: sha256Schema,
+  providerId: z.string().min(1),
+  idempotencyKey: z.string().min(1),
+  status: z.enum([
+    'RESERVED',
+    'PROVIDER_CALL_STARTED',
+    'BLOCKED_MANUAL_RECOVERY',
+    'FAILED',
+    'OVER_AUTHORIZATION',
+    'RECOVERABLE',
+    'COMMITTED',
+  ]),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const voiceReservationAuditSchema = z.object({
+  schemaVersion: z.literal(1),
+  attemptId: transactionIdSchema,
+  projectId: z.string().min(1),
+  approvedScriptHash: sha256Schema,
+  providerId: z.string().min(1),
+  idempotencyKey: z.string().min(1),
+  estimate: costRecordSchema,
+  authorizedMaxCny: z.number().finite().nonnegative(),
+  remainingAtAuthorizationCny: z.number().finite().nonnegative(),
+  budgetScope: z.literal('single-process; multi-process requires Task9 project lock'),
+  reservedAt: z.string().datetime(),
+}).superRefine((reservation, context) => {
+  if (reservation.estimate.providerId !== reservation.providerId
+    || reservation.authorizedMaxCny !== reservation.estimate.amount
+    || !reservation.idempotencyKey.endsWith(
+      `:${reservation.projectId}:${reservation.approvedScriptHash}:${reservation.attemptId}`,
+    )) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'reservation audit must bind the estimate and project attempt',
+    });
+  }
+});
+
+export const voiceSettlementAuditSchema = z.object({
+  schemaVersion: z.literal(1),
+  attemptId: transactionIdSchema,
+  actual: costRecordSchema,
+  withinAuthorization: z.boolean(),
+  settledAt: z.string().datetime(),
 });
 
 export const voiceCommitMarkerSchema = z.object({
@@ -114,8 +196,20 @@ export const voiceCommitMarkerSchema = z.object({
   committedAt: z.string().datetime(),
 });
 
+export const voiceResultAuditSchema = z.object({
+  schemaVersion: z.literal(1),
+  attemptId: transactionIdSchema,
+  transactionId: transactionIdSchema,
+  marker: voiceCommitMarkerSchema,
+  persistedAt: z.string().datetime(),
+});
+
 export type VoiceReport = z.infer<typeof voiceReportSchema>;
 export type WordTimings = z.infer<typeof wordTimingsSchema>;
 export type VoiceAuthorization = z.infer<typeof voiceAuthorizationSchema>;
 export type VoiceCharge = z.infer<typeof voiceChargeSchema>;
 export type VoiceCommitMarker = z.infer<typeof voiceCommitMarkerSchema>;
+export type VoiceAttemptAudit = z.infer<typeof voiceAttemptAuditSchema>;
+export type VoiceReservationAudit = z.infer<typeof voiceReservationAuditSchema>;
+export type VoiceSettlementAudit = z.infer<typeof voiceSettlementAuditSchema>;
+export type VoiceResultAudit = z.infer<typeof voiceResultAuditSchema>;

@@ -8,6 +8,7 @@ export interface CostEstimate {
 }
 
 export interface TtsRequest {
+  idempotencyKey: string;
   approvedScriptHash: string;
   text: string;
   voiceId: string;

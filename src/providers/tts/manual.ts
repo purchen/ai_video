@@ -48,31 +48,37 @@ export const manualVoicePackageMarkerSchema = z.object({
   committedAt: z.string().datetime(),
 });
 
-export const manualAudioAuthorizationSchema = z.object({
+const manualRightsBase = {
   schemaVersion: z.literal(1),
-  authorization: z.enum(['synthetic', 'user-authorized']),
-  sourceKind: z.enum(['jianying-synthetic', 'external-recording', 'cloned', 'similar-real-person']),
-  voiceKind: z.enum(['synthetic', 'cloned', 'similar-real-person']),
   voiceId: z.string().min(1),
-  owner: z.string().min(1).optional(),
-  syntheticIdentifier: z.string().min(1).optional(),
   authorizedBy: z.string().min(1),
   authorizedAt: z.string().datetime(),
   consentReference: z.string().min(1),
-}).superRefine((record, context) => {
-  if (record.authorization === 'synthetic') {
-    if (record.sourceKind !== 'jianying-synthetic') {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'synthetic audio must use the Jianying synthetic source kind',
-      });
-    } else if (record.voiceKind !== 'synthetic' || !record.syntheticIdentifier) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: 'synthetic audio requires a synthetic identifier' });
-    }
-  } else if (!record.owner || record.voiceKind === 'synthetic') {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: 'user-authorized audio requires an owner and real-person voice kind' });
-  }
-});
+};
+
+export const manualAudioAuthorizationSchema = z.discriminatedUnion('sourceKind', [
+  z.object({
+    ...manualRightsBase,
+    sourceKind: z.literal('jianying-synthetic'),
+    authorization: z.literal('synthetic'),
+    voiceKind: z.literal('synthetic'),
+    syntheticIdentifier: z.string().min(1),
+  }).strict(),
+  z.object({
+    ...manualRightsBase,
+    sourceKind: z.literal('cloned'),
+    authorization: z.literal('user-authorized'),
+    voiceKind: z.literal('cloned'),
+    owner: z.string().min(1),
+  }).strict(),
+  z.object({
+    ...manualRightsBase,
+    sourceKind: z.literal('similar-real-person'),
+    authorization: z.literal('user-authorized'),
+    voiceKind: z.literal('similar-real-person'),
+    owner: z.string().min(1),
+  }).strict(),
+]);
 
 export type ManualVoicePackage = z.infer<typeof manualVoicePackageSchema>;
 export type ManualAudioAuthorization = z.infer<typeof manualAudioAuthorizationSchema>;
@@ -132,20 +138,24 @@ export async function createManualVoicePackage(request: CreateManualVoicePackage
   await io.mkdir(root);
   await io.mkdir(packagesRoot);
   await io.mkdir(directory);
-  await io.rm(markerPath);
-  await writeJson(io, packagePath, manualPackage);
-  await io.writeFile(textPath, text);
-  const marker = manualVoicePackageMarkerSchema.parse({
-    schemaVersion: 1,
-    transactionId,
-    projectId: manualPackage.projectId,
-    scriptHash: manualPackage.scriptHash,
-    packageHash: await sha256File(io, packagePath),
-    textHash: await sha256File(io, textPath),
-    committedAt: createdAt,
-  });
-  await writeMarkerAtomically(io, root, markerPath, marker);
-  return manualPackage;
+  try {
+    await writeJson(io, packagePath, manualPackage);
+    await io.writeFile(textPath, text);
+    const marker = manualVoicePackageMarkerSchema.parse({
+      schemaVersion: 1,
+      transactionId,
+      projectId: manualPackage.projectId,
+      scriptHash: manualPackage.scriptHash,
+      packageHash: await sha256File(io, packagePath),
+      textHash: await sha256File(io, textPath),
+      committedAt: createdAt,
+    });
+    await writeMarkerAtomically(io, root, markerPath, marker);
+    return manualPackage;
+  } catch (error) {
+    await io.rm(directory).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function readManualVoicePackage(
@@ -188,6 +198,7 @@ export async function readManualVoicePackage(
 
 export interface ImportManualVoiceRequest {
   store: ProjectStore;
+  attemptId: string;
   requestedScriptHash: string;
   audioPath: string;
   authorization?: ManualAudioAuthorization;
@@ -211,7 +222,7 @@ export async function importManualVoice(request: ImportManualVoiceRequest): Prom
   if (!request.authorization) throw new Error('manual audio authorization is required');
   const rights = manualAudioAuthorizationSchema.parse(request.authorization);
   const io = request.artifactIo ?? nodeVoiceArtifactIo;
-  const transactionId = randomUUID();
+  const transactionId = transactionIdSchema.parse(request.attemptId);
   const generatedAt = (request.now ?? (() => new Date().toISOString()))();
   const root = voiceRoot(request.store);
   const directory = voicePath(request.store, 'transactions', transactionId);
@@ -224,7 +235,7 @@ export async function importManualVoice(request: ImportManualVoiceRequest): Prom
   await io.mkdir(root);
   await io.mkdir(voicePath(request.store, 'transactions'));
   await io.mkdir(directory);
-  await io.rm(markerPath);
+  let committed = false;
   try {
     await request.converter.convertToWav48k(request.audioPath, temporaryWav);
     const metadata = audioMetadataSchema.parse(await request.probe.probe(temporaryWav));
@@ -255,6 +266,11 @@ export async function importManualVoice(request: ImportManualVoiceRequest): Prom
       projectId: approvedScript.script.projectId,
       approvedScriptHash: approvedScript.scriptHash,
       providerId,
+      reservationId: transactionId,
+      idempotencyKey: `manual:${approvedScript.script.projectId}:${approvedScript.scriptHash}:${transactionId}`,
+      authorizedMaxCny: 0,
+      remainingAtAuthorizationCny: 0,
+      budgetScope: 'single-process; multi-process requires Task9 project lock',
       estimate: zeroCost,
       actual: zeroCost,
       status: 'SETTLED_WITHIN_AUTHORIZATION',
@@ -300,9 +316,11 @@ export async function importManualVoice(request: ImportManualVoiceRequest): Prom
       committedAt: generatedAt,
     });
     await writeMarkerAtomically(io, root, markerPath, marker);
+    committed = true;
     return { status: 'READY', report };
   } finally {
     await io.rm(temporaryWav).catch(() => undefined);
+    if (!committed) await io.rm(directory).catch(() => undefined);
   }
 }
 

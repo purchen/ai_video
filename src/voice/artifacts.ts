@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   mkdir as nodeMkdir,
   readFile as nodeReadFile,
+  readdir as nodeReaddir,
   rename as nodeRename,
   rm as nodeRm,
   writeFile as nodeWriteFile,
@@ -12,6 +13,7 @@ import type { ProjectStore } from '../store/project-store';
 export interface VoiceArtifactIo {
   mkdir(path: string): Promise<void>;
   readFile(path: string): Promise<Buffer>;
+  readdir(path: string): Promise<string[]>;
   writeFile(path: string, data: string | Uint8Array): Promise<void>;
   rename(from: string, to: string): Promise<void>;
   rm(path: string): Promise<void>;
@@ -20,6 +22,7 @@ export interface VoiceArtifactIo {
 export const nodeVoiceArtifactIo: VoiceArtifactIo = {
   mkdir: async (path) => { await nodeMkdir(path, { recursive: true }); },
   readFile: async (path) => nodeReadFile(path),
+  readdir: async (path) => nodeReaddir(path),
   writeFile: async (path, data) => { await nodeWriteFile(path, data); },
   rename: async (from, to) => { await nodeRename(from, to); },
   rm: async (path) => { await nodeRm(path, { force: true, recursive: true }); },

@@ -18,6 +18,7 @@ describe('ProviderRegistry', () => {
     const registry = ProviderRegistry.detect({ OPENAI_API_KEY: 'test' });
 
     expect(registry.selectTts({
+      idempotencyKey: 'voice:test-direct',
       approvedScriptHash: 'a'.repeat(64),
       text: 'Test narration',
       voiceId: 'alloy',
@@ -33,6 +34,7 @@ describe('ProviderRegistry', () => {
     const registry = ProviderRegistry.detect({});
 
     expect(registry.selectTts({
+      idempotencyKey: 'voice:test-manual',
       approvedScriptHash: 'a'.repeat(64),
       text: 'Test narration',
       voiceId: 'alloy',

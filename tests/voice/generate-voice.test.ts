@@ -16,8 +16,10 @@ import {
 } from '../../src/voice/artifacts';
 import type { AudioProbe } from '../../src/voice/probe-audio';
 import {
+  cleanupVoiceArtifacts,
   generateVoice,
   readCommittedVoice,
+  readVoiceAttemptAudit,
   voiceChargeSchema,
   voiceReportSchema,
   wordTimingsSchema,
@@ -83,6 +85,7 @@ describe('generateVoice durable and provider boundaries', () => {
     expect(provider.requests.every((request) => request.text === scriptNarrationText(context.approvedScript.script))).toBe(true);
     expect(provider.requests.every((request) => request.voiceKind === 'synthetic')).toBe(true);
     expect(provider.requests.every((request) => request.authorization === 'synthetic')).toBe(true);
+    expect(provider.requests.every((request) => request.idempotencyKey.includes(context.attemptId))).toBe(true);
   });
 
   it('returns a committed Jianying package when no direct compatible TTS is available', async () => {
@@ -128,7 +131,8 @@ describe('generateVoice durable and provider boundaries', () => {
     })).rejects.toThrow('Paid call requires approval');
 
     expect(provider.calls).toEqual(['supports', 'available', 'estimate']);
-    await expect(readCommittedVoice(context.store)).rejects.toThrow('voice publication is not committed');
+    await expect(readCommittedVoice(context.store, context.probe)).rejects.toThrow('voice publication is not committed');
+    expect(await transactionDirectories(context.store)).toEqual([]);
   });
 
   it.each(['cloned', 'similar-real-person'] as const)(
@@ -176,7 +180,7 @@ describe('generateVoice durable and provider boundaries', () => {
       ...context,
       registry: ProviderRegistry.fromTtsAdapters([provider.adapter]),
     })).rejects.toThrow('TTS result does not match selected provider and voice authorization');
-    await expect(readCommittedVoice(context.store)).rejects.toThrow('voice publication is not committed');
+    await expect(readCommittedVoice(context.store, context.probe)).rejects.toThrow('voice publication is not committed');
   });
 
   it('rejects person-b provider output for a person-a authorization without READY publication', async () => {
@@ -188,7 +192,7 @@ describe('generateVoice durable and provider boundaries', () => {
       registry: ProviderRegistry.fromTtsAdapters([provider.adapter]),
       voice: { voiceId: 'person-a', kind: 'cloned', authorization: cloneAuthorization('person-a') },
     })).rejects.toThrow('TTS result does not match selected provider and voice authorization');
-    await expect(readCommittedVoice(context.store)).rejects.toThrow('voice publication is not committed');
+    await expect(readCommittedVoice(context.store, context.probe)).rejects.toThrow('voice publication is not committed');
   });
 });
 
@@ -208,7 +212,7 @@ describe('generateVoice settlement and publication transaction', () => {
     });
 
     expect(result.status).toBe('READY');
-    const committed = await readCommittedVoice(context.store);
+    const committed = await readCommittedVoice(context.store, context.probe);
     expect(voiceReportSchema.parse(committed.report)).toMatchObject({
       schemaVersion: 1,
       status: 'READY',
@@ -232,6 +236,13 @@ describe('generateVoice settlement and publication transaction', () => {
       ...committed.charge,
       actual: { ...committed.charge.actual, providerId: 'other-provider' },
     })).toThrow('charge providers must match the transaction provider');
+    expect(() => voiceChargeSchema.parse({
+      ...committed.charge,
+      authorizedMaxCny: 20,
+      remainingAtAuthorizationCny: 20,
+      actual: { ...committed.charge.actual, amount: 20 },
+      status: 'SETTLED_WITHIN_AUTHORIZATION',
+    })).toThrow('authorized maximum must equal the audited estimate');
     expect(() => voiceReportSchema.parse({
       ...committed.report,
       voiceKind: 'cloned',
@@ -249,14 +260,16 @@ describe('generateVoice settlement and publication transaction', () => {
     })).rejects.toThrow('actual TTS cost exceeds authorized amount');
 
     expect(context.budgetGuard.spentCny()).toBe(20);
-    const charge = await onlyPersistedCharge(context.store);
+    const charge = (await readVoiceAttemptAudit(context.store, context.attemptId)).charge;
     expect(voiceChargeSchema.parse(charge)).toMatchObject({
       schemaVersion: 1,
       estimate: { amount: 1 },
       actual: { amount: 20 },
+      authorizedMaxCny: 1,
       status: 'SETTLED_OVER_AUTHORIZATION',
     });
-    await expect(readCommittedVoice(context.store)).rejects.toThrow('voice publication is not committed');
+    expect((await readVoiceAttemptAudit(context.store, context.attemptId)).attempt.status).toBe('OVER_AUTHORIZATION');
+    await expect(readCommittedVoice(context.store, context.probe)).rejects.toThrow('voice publication is not committed');
   });
 
   it.each(['master', 'timings', 'report', 'charge', 'marker'] as const)(
@@ -269,21 +282,71 @@ describe('generateVoice settlement and publication transaction', () => {
         registry: ProviderRegistry.fromTtsAdapters([provider.adapter]),
         artifactIo: failingIo(stage),
       })).rejects.toThrow(`injected ${stage} failure`);
-      await expect(readCommittedVoice(context.store)).rejects.toThrow('voice publication is not committed');
+      await expect(readCommittedVoice(context.store, context.probe)).rejects.toThrow('voice publication is not committed');
+      const transactions = await transactionDirectories(context.store);
+      if (stage === 'marker') expect(transactions).toEqual([context.attemptId]);
+      else expect(transactions).toEqual([]);
     },
   );
 
-  it('does not reuse an old READY marker after a later transaction fails', async () => {
+  it('keeps the old READY marker readable after a later transaction fails', async () => {
     const context = await voiceContext();
     await generateVoice({ ...context, registry: ProviderRegistry.fromTtsAdapters([directProvider().adapter]) });
-    await expect(readCommittedVoice(context.store)).resolves.toMatchObject({ report: { status: 'READY' } });
+    const previous = await readCommittedVoice(context.store, context.probe);
 
     await expect(generateVoice({
       ...context,
+      attemptId: '00000000-0000-4000-8000-000000000022',
       registry: ProviderRegistry.fromTtsAdapters([directProvider().adapter]),
       artifactIo: failingIo('report'),
     })).rejects.toThrow('injected report failure');
-    await expect(readCommittedVoice(context.store)).rejects.toThrow('voice publication is not committed');
+    expect((await readCommittedVoice(context.store, context.probe)).report.transactionId)
+      .toBe(previous.report.transactionId);
+  });
+
+  it('recovers a paid marker failure with the same attempt without a second provider call', async () => {
+    const context = await voiceContext();
+    const provider = directProvider();
+    await expect(generateVoice({
+      ...context,
+      registry: ProviderRegistry.fromTtsAdapters([provider.adapter]),
+      artifactIo: failingIo('marker'),
+    })).rejects.toThrow('injected marker failure');
+    expect(provider.calls.filter((call) => call === 'synthesize')).toHaveLength(1);
+    expect((await readVoiceAttemptAudit(context.store, context.attemptId)).attempt.status).toBe('RECOVERABLE');
+
+    await generateVoice({ ...context, registry: ProviderRegistry.fromTtsAdapters([provider.adapter]) });
+
+    expect(provider.calls.filter((call) => call === 'synthesize')).toHaveLength(1);
+    await expect(readCommittedVoice(context.store, context.probe)).resolves.toMatchObject({ report: { status: 'READY' } });
+  });
+
+  it('blocks an ambiguous retry after provider invocation without a persisted result', async () => {
+    const context = await voiceContext();
+    const provider = directProvider({ synthesizeError: new Error('connection lost after request') });
+    await expect(generateVoice({ ...context, registry: ProviderRegistry.fromTtsAdapters([provider.adapter]) }))
+      .rejects.toThrow('connection lost after request');
+    await expect(generateVoice({ ...context, registry: ProviderRegistry.fromTtsAdapters([provider.adapter]) }))
+      .rejects.toThrow('voice attempt requires manual recovery before another paid call');
+    expect(provider.calls.filter((call) => call === 'synthesize')).toHaveLength(1);
+    expect((await readVoiceAttemptAudit(context.store, context.attemptId)).attempt.status)
+      .toBe('BLOCKED_MANUAL_RECOVERY');
+  });
+
+  it('treats a corrupt persisted attempt as blocking instead of a new payable attempt', async () => {
+    const context = await voiceContext();
+    const provider = directProvider({ synthesizeError: new Error('connection lost after request') });
+    await expect(generateVoice({ ...context, registry: ProviderRegistry.fromTtsAdapters([provider.adapter]) }))
+      .rejects.toThrow('connection lost after request');
+    await writeFile(
+      join(context.store.root, 'voice', 'audit', context.attemptId, 'attempt.json'),
+      '{"corrupt":true}\n',
+      'utf8',
+    );
+
+    await expect(generateVoice({ ...context, registry: ProviderRegistry.fromTtsAdapters([provider.adapter]) }))
+      .rejects.toThrow();
+    expect(provider.calls.filter((call) => call === 'synthesize')).toHaveLength(1);
   });
 
   it.each(['master.wav', 'word-timings.json', 'voice-report.json', 'charge.json'] as const)(
@@ -291,7 +354,7 @@ describe('generateVoice settlement and publication transaction', () => {
     async (artifactName) => {
       const context = await voiceContext();
       await generateVoice({ ...context, registry: ProviderRegistry.fromTtsAdapters([directProvider().adapter]) });
-      const committed = await readCommittedVoice(context.store);
+      const committed = await readCommittedVoice(context.store, context.probe);
       const artifactPath = join(
         context.store.root,
         'voice',
@@ -301,7 +364,7 @@ describe('generateVoice settlement and publication transaction', () => {
       );
       const original = await readFile(artifactPath);
       await writeFile(artifactPath, Buffer.concat([original, Buffer.from('tampered')]));
-      await expect(readCommittedVoice(context.store)).rejects.toThrow(
+      await expect(readCommittedVoice(context.store, context.probe)).rejects.toThrow(
         'voice publication commit does not match its artifacts',
       );
     },
@@ -317,7 +380,7 @@ describe('generateVoice settlement and publication transaction', () => {
       ...context,
       registry: ProviderRegistry.fromTtsAdapters([directProvider().adapter]),
     })).rejects.toThrow('authoritative voice master must be 48 kHz PCM WAV');
-    await expect(readCommittedVoice(context.store)).rejects.toThrow('voice publication is not committed');
+    await expect(readCommittedVoice(context.store, context.probe)).rejects.toThrow('voice publication is not committed');
   });
 
   it('rejects non-monotonic, overlapping, or out-of-duration word timings', async () => {
@@ -333,7 +396,41 @@ describe('generateVoice settlement and publication transaction', () => {
       ...context,
       registry: ProviderRegistry.fromTtsAdapters([provider.adapter]),
     })).rejects.toThrow('word timings must be monotonic, non-overlapping, and within voice duration');
-    await expect(readCommittedVoice(context.store)).rejects.toThrow('voice publication is not committed');
+    await expect(readCommittedVoice(context.store, context.probe)).rejects.toThrow('voice publication is not committed');
+  });
+
+  it('re-probes committed master and rejects metadata that disagrees with its report', async () => {
+    const context = await voiceContext();
+    await generateVoice({ ...context, registry: ProviderRegistry.fromTtsAdapters([directProvider().adapter]) });
+    let probeCalls = 0;
+    const disagreeingProbe: AudioProbe = {
+      probe: async () => {
+        probeCalls += 1;
+        return {
+          durationMs: 90_000,
+          sampleRateHz: 48_000,
+          channels: 1,
+          integratedLufs: -16,
+          formatName: 'mp3',
+          codecName: 'mp3',
+        };
+      },
+    };
+    await expect(readCommittedVoice(context.store, disagreeingProbe)).rejects.toThrow(
+      'voice publication commit does not match its artifacts',
+    );
+    expect(probeCalls).toBe(1);
+  });
+
+  it('cleans stale sensitive staging without deleting the current committed version', async () => {
+    const context = await voiceContext();
+    await generateVoice({ ...context, registry: ProviderRegistry.fromTtsAdapters([directProvider().adapter]) });
+    const stale = join(context.store.root, 'voice', 'transactions', '00000000-0000-4000-8000-000000000099');
+    await nodeVoiceArtifactIo.mkdir(stale);
+    await nodeVoiceArtifactIo.writeFile(join(stale, 'master.wav'), 'sensitive stale bytes');
+    await cleanupVoiceArtifacts(context.store, { keepRecentCommitted: 1 });
+    await expect(access(stale)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readCommittedVoice(context.store, context.probe)).resolves.toMatchObject({ report: { status: 'READY' } });
   });
 });
 
@@ -360,6 +457,7 @@ async function voiceContext(options: {
   };
   return {
     approvedScript,
+    attemptId: '00000000-0000-4000-8000-000000000021',
     requestedScriptHash: approvedScript.scriptHash,
     store,
     budgetGuard: new BudgetGuard({ limitCny: options.budgetLimit ?? 5, spentCny: 0, dryRun: false }),
@@ -374,6 +472,7 @@ function directProvider(options: {
   wordTimings?: TtsResult['wordTimings'];
   resultOverride?: Partial<TtsResult>;
   supported?: boolean;
+  synthesizeError?: Error;
 } = {}): { adapter: TtsAdapter; calls: string[]; requests: TtsRequest[] } {
   const calls: string[] = [];
   const requests: TtsRequest[] = [];
@@ -397,6 +496,7 @@ function directProvider(options: {
     synthesize: async (request) => {
       calls.push('synthesize');
       requests.push(request);
+      if (options.synthesizeError) throw options.synthesizeError;
       await writeFile(request.outputPath, 'fixture pcm wav');
       return {
         audioPath: request.outputPath,
@@ -435,6 +535,7 @@ function cloneAuthorization(voiceId: string) {
 
 function ttsRequestFixture(outputPath: string): TtsRequest {
   return {
+    idempotencyKey: 'voice:topic-001:test-attempt',
     approvedScriptHash: 'a'.repeat(64),
     text: '不访问真实网络的旁白',
     voiceId: 'alloy',
@@ -469,9 +570,10 @@ function failingIo(stage: 'master' | 'timings' | 'report' | 'charge' | 'marker')
   };
 }
 
-async function onlyPersistedCharge(store: ProjectStore): Promise<unknown> {
-  const root = join(store.root, 'voice', 'transactions');
-  const transactions = await readdir(root);
-  expect(transactions).toHaveLength(1);
-  return JSON.parse(await readFile(join(root, transactions[0], 'charge.json'), 'utf8'));
+async function transactionDirectories(store: ProjectStore): Promise<string[]> {
+  try {
+    return (await readdir(join(store.root, 'voice', 'transactions'))).sort();
+  } catch {
+    return [];
+  }
 }

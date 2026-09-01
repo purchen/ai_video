@@ -50,6 +50,7 @@ export class OpenAiTtsAdapter implements TtsAdapter {
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
+        'Idempotency-Key': request.idempotencyKey,
       },
       body: JSON.stringify({
         model: this.model,

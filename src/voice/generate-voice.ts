@@ -1,12 +1,8 @@
-import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import type { BudgetGuard } from '../config';
+import type { BudgetAuthorization, BudgetGuard } from '../config';
 import type { CostEstimate, TtsRequest, TtsResult } from '../providers/contracts';
 import type { ProviderRegistry } from '../providers/registry';
-import {
-  createManualVoicePackage,
-  type ManualVoicePackage,
-} from '../providers/tts/manual';
+import { createManualVoicePackage, type ManualVoicePackage } from '../providers/tts/manual';
 import { readApprovedScript } from '../review/approve';
 import { hashCanonicalJson } from '../script/hash-script';
 import { scriptNarrationText } from '../script/narration';
@@ -21,17 +17,27 @@ import {
   writeMarkerAtomically,
   type VoiceArtifactIo,
 } from './artifacts';
-import { audioMetadataSchema, type AudioProbe } from './probe-audio';
+import { audioMetadataSchema, type AudioMetadata, type AudioProbe } from './probe-audio';
 import {
   costRecordSchema,
+  transactionIdSchema,
+  voiceAttemptAuditSchema,
   voiceAuthorizationSchema,
   voiceChargeSchema,
   voiceCommitMarkerSchema,
   voiceReportSchema,
+  voiceReservationAuditSchema,
+  voiceResultAuditSchema,
+  voiceSettlementAuditSchema,
   wordTimingsSchema,
+  type VoiceAttemptAudit,
   type VoiceAuthorization,
   type VoiceCharge,
+  type VoiceCommitMarker,
   type VoiceReport,
+  type VoiceReservationAudit,
+  type VoiceResultAudit,
+  type VoiceSettlementAudit,
   type WordTimings,
 } from './schemas';
 
@@ -44,6 +50,8 @@ export {
 } from './schemas';
 export type { VoiceAuthorization, VoiceCharge, VoiceReport, WordTimings } from './schemas';
 
+const budgetScope = 'single-process; multi-process requires Task9 project lock' as const;
+
 export interface VoiceSelection {
   voiceId: string;
   kind: 'synthetic' | 'cloned' | 'similar-real-person';
@@ -51,6 +59,7 @@ export interface VoiceSelection {
 }
 
 export interface GenerateVoiceRequest {
+  attemptId: string;
   requestedScriptHash: string;
   registry: ProviderRegistry;
   budgetGuard: BudgetGuard;
@@ -72,19 +81,53 @@ export interface CommittedVoice {
   masterPath: string;
 }
 
+export interface VoiceAttemptAuditBundle {
+  attempt: VoiceAttemptAudit;
+  reservation?: VoiceReservationAudit;
+  settlement?: VoiceSettlementAudit;
+  charge?: VoiceCharge;
+  result?: VoiceResultAudit;
+}
+
 export async function generateVoice(request: GenerateVoiceRequest): Promise<GenerateVoiceResult> {
   const approvedScript = await readApprovedScript(request.store);
   if (request.requestedScriptHash !== approvedScript.scriptHash) {
     throw new Error('voice request does not match approved script hash');
   }
+  const attemptId = transactionIdSchema.parse(request.attemptId);
+  const io = request.artifactIo ?? nodeVoiceArtifactIo;
+  const existing = await tryReadAttemptAudit(request.store, attemptId, io);
+  if (existing) {
+    assertAttemptMatches(existing.attempt, approvedScript.script.projectId, approvedScript.scriptHash);
+    assertAuditBundle(existing);
+    if (existing.result && existing.attempt.status !== 'OVER_AUTHORIZATION') {
+      const recovered = await verifyTransaction(request.store, existing.result.marker, request.probe, io);
+      await writeMarkerAtomically(
+        io,
+        voiceRoot(request.store),
+        voicePath(request.store, 'current.json'),
+        existing.result.marker,
+      );
+      await writeAttemptStatus(io, request.store, existing.attempt, 'COMMITTED', now(request));
+      return { status: 'READY', report: recovered.report };
+    }
+    if (existing.attempt.status === 'OVER_AUTHORIZATION') {
+      throw new Error('actual TTS cost exceeds authorized amount');
+    }
+    if (existing.attempt.status !== 'RESERVED') {
+      throw new Error('voice attempt requires manual recovery before another paid call');
+    }
+  }
 
   const voice = validateVoiceSelection(request.voice ?? { voiceId: 'alloy', kind: 'synthetic' });
   const authorization = authorizationBinding(voice);
   const text = scriptNarrationText(approvedScript.script);
-  const transactionId = randomUUID();
+  const transactionId = attemptId;
   const transactionDirectory = voicePath(request.store, 'transactions', transactionId);
   const temporaryAudio = join(transactionDirectory, 'master.tmp.wav');
+  const idempotencyKey = `voice:${approvedScript.script.projectId}:${approvedScript.scriptHash}:${attemptId}`;
   const ttsRequest: TtsRequest = {
+    idempotencyKey,
     approvedScriptHash: approvedScript.scriptHash,
     text,
     voiceId: voice.voiceId,
@@ -105,36 +148,78 @@ export async function generateVoice(request: GenerateVoiceRequest): Promise<Gene
     return { status: 'MANUAL_AUDIO_REQUIRED', package: manualPackage };
   }
 
-  const io = request.artifactIo ?? nodeVoiceArtifactIo;
-  const generatedAt = (request.now ?? (() => new Date().toISOString()))();
-  const currentMarkerPath = voicePath(request.store, 'current.json');
+  const timestamp = now(request);
+  const auditDirectory = voicePath(request.store, 'audit', attemptId);
   await io.mkdir(voiceRoot(request.store));
-  await io.mkdir(voicePath(request.store, 'transactions'));
-  await io.mkdir(transactionDirectory);
+  await io.mkdir(voicePath(request.store, 'audit'));
+  await io.mkdir(auditDirectory);
 
   const estimate = parseProviderCost(await adapter.estimate(ttsRequest), adapter.id, 'estimate');
-  const budgetAuthorization = request.budgetGuard.authorize(estimate);
-  await io.rm(currentMarkerPath);
+  const budgetAuthorization = request.budgetGuard.reserve(attemptId, estimate);
+  const attempt = existing?.attempt ?? voiceAttemptAuditSchema.parse({
+    schemaVersion: 1,
+    attemptId,
+    transactionId,
+    projectId: approvedScript.script.projectId,
+    approvedScriptHash: approvedScript.scriptHash,
+    providerId: adapter.id,
+    idempotencyKey,
+    status: 'RESERVED',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+  const reservation = voiceReservationAuditSchema.parse({
+    schemaVersion: 1,
+    attemptId,
+    projectId: approvedScript.script.projectId,
+    approvedScriptHash: approvedScript.scriptHash,
+    providerId: adapter.id,
+    idempotencyKey,
+    estimate,
+    authorizedMaxCny: budgetAuthorization.maximumAmountCny,
+    remainingAtAuthorizationCny: budgetAuthorization.remainingAtAuthorizationCny,
+    budgetScope,
+    reservedAt: timestamp,
+  });
+  await writeAudit(io, auditDirectory, 'reservation.json', reservation);
+  await writeAudit(io, auditDirectory, 'attempt.json', attempt);
+  await writeAttemptStatus(io, request.store, attempt, 'PROVIDER_CALL_STARTED', timestamp);
 
+  let resultPersisted = false;
+  let terminalStatus: VoiceAttemptAudit['status'] | undefined;
   try {
+    await io.mkdir(voicePath(request.store, 'transactions'));
+    await io.mkdir(transactionDirectory);
     const synthesis = await adapter.synthesize(ttsRequest);
     assertSynthesisBinding(synthesis, adapter.id, ttsRequest);
     const actual = parseProviderCost(synthesis.cost, adapter.id, 'actual');
-    const withinAuthorization = request.budgetGuard.settleAuthorized(budgetAuthorization, actual);
-    const charge = voiceChargeSchema.parse({
+    const settlementResult = request.budgetGuard.settleReservation(attemptId, actual);
+    const settlement = voiceSettlementAuditSchema.parse({
       schemaVersion: 1,
-      transactionId,
-      projectId: approvedScript.script.projectId,
-      approvedScriptHash: approvedScript.scriptHash,
-      providerId: adapter.id,
+      attemptId,
+      actual,
+      withinAuthorization: settlementResult.withinAuthorization,
+      settledAt: timestamp,
+    });
+    const charge = createCharge(
+      attemptId,
+      approvedScript.script.projectId,
+      approvedScript.scriptHash,
+      adapter.id,
+      idempotencyKey,
       estimate,
       actual,
-      status: withinAuthorization ? 'SETTLED_WITHIN_AUTHORIZATION' : 'SETTLED_OVER_AUTHORIZATION',
-      settledAt: generatedAt,
-    });
-    const chargePath = join(transactionDirectory, 'charge.json');
-    await writeJson(io, chargePath, charge);
-    if (!withinAuthorization) throw new Error('actual TTS cost exceeds authorized amount');
+      budgetAuthorization,
+      settlementResult.withinAuthorization,
+      timestamp,
+    );
+    await writeAudit(io, auditDirectory, 'settlement.json', settlement);
+    await writeAudit(io, auditDirectory, 'charge.json', charge);
+    if (!settlementResult.withinAuthorization) {
+      terminalStatus = 'OVER_AUTHORIZATION';
+      await writeAttemptStatus(io, request.store, attempt, terminalStatus, timestamp);
+      throw new Error('actual TTS cost exceeds authorized amount');
+    }
 
     const metadata = audioMetadataSchema.parse(await request.probe.probe(temporaryAudio));
     assertAuthoritativeAudio(metadata);
@@ -145,50 +230,65 @@ export async function generateVoice(request: GenerateVoiceRequest): Promise<Gene
       synthesis.wordTimings,
       metadata.durationMs,
     );
-    const report = voiceReportSchema.parse({
-      schemaVersion: 1,
-      status: 'READY',
-      projectId: approvedScript.script.projectId,
+    const report = createReport(
+      approvedScript.script.projectId,
+      approvedScript.scriptHash,
       transactionId,
-      approvedScriptHash: approvedScript.scriptHash,
-      providerId: synthesis.providerId,
-      model: synthesis.model,
-      voiceId: synthesis.voiceId,
-      voiceKind: synthesis.voiceKind,
-      authorization: synthesis.authorization,
-      authorizationReference: synthesis.authorizationReference,
-      authorizationHash: synthesis.authorizationHash,
-      durationMs: metadata.durationMs,
-      sampleRateHz: metadata.sampleRateHz,
-      channels: metadata.channels,
-      formatName: metadata.formatName,
-      codecName: metadata.codecName,
-      integratedLufs: metadata.integratedLufs,
-      costCny: actual.amount,
-      generatedAt,
-    });
-
+      synthesis,
+      metadata,
+      actual.amount,
+      timestamp,
+    );
     const masterPath = join(transactionDirectory, 'master.wav');
     const timingsPath = join(transactionDirectory, 'word-timings.json');
     const reportPath = join(transactionDirectory, 'voice-report.json');
+    const chargePath = join(transactionDirectory, 'charge.json');
     await io.rename(temporaryAudio, masterPath);
     await writeJson(io, timingsPath, timings);
     await writeJson(io, reportPath, report);
-    const marker = voiceCommitMarkerSchema.parse({
-      schemaVersion: 1,
+    await writeJson(io, chargePath, charge);
+    const marker = await createMarker(
+      io,
+      approvedScript.script.projectId,
+      approvedScript.scriptHash,
       transactionId,
-      projectId: approvedScript.script.projectId,
-      approvedScriptHash: approvedScript.scriptHash,
-      masterHash: await sha256File(io, masterPath),
-      timingsHash: await sha256File(io, timingsPath),
-      reportHash: await sha256File(io, reportPath),
-      chargeHash: await sha256File(io, chargePath),
-      authorizationReference: authorization.reference,
-      authorizationHash: authorization.hash,
-      committedAt: generatedAt,
+      authorization.reference,
+      authorization.hash,
+      timestamp,
+      masterPath,
+      timingsPath,
+      reportPath,
+      chargePath,
+    );
+    const resultAudit = voiceResultAuditSchema.parse({
+      schemaVersion: 1,
+      attemptId,
+      transactionId,
+      marker,
+      persistedAt: timestamp,
     });
-    await writeMarkerAtomically(io, voiceRoot(request.store), currentMarkerPath, marker);
+    await writeAudit(io, auditDirectory, 'result.json', resultAudit);
+    resultPersisted = true;
+    await writeAttemptStatus(io, request.store, attempt, 'RECOVERABLE', timestamp);
+    await writeMarkerAtomically(io, voiceRoot(request.store), voicePath(request.store, 'current.json'), marker);
+    await writeAttemptStatus(io, request.store, attempt, 'COMMITTED', timestamp);
     return { status: 'READY', report };
+  } catch (error) {
+    if (resultPersisted) {
+      await writeAttemptStatus(io, request.store, attempt, 'RECOVERABLE', timestamp).catch(() => undefined);
+    } else {
+      await io.rm(transactionDirectory).catch(() => undefined);
+      if (!terminalStatus) {
+        await writeAttemptStatus(
+          io,
+          request.store,
+          attempt,
+          'BLOCKED_MANUAL_RECOVERY',
+          timestamp,
+        ).catch(() => undefined);
+      }
+    }
+    throw error;
   } finally {
     await io.rm(temporaryAudio).catch(() => undefined);
   }
@@ -196,19 +296,78 @@ export async function generateVoice(request: GenerateVoiceRequest): Promise<Gene
 
 export async function readCommittedVoice(
   store: ProjectStore,
+  probe: AudioProbe,
   artifactIo: VoiceArtifactIo = nodeVoiceArtifactIo,
 ): Promise<CommittedVoice> {
   const approvedScript = await readApprovedScript(store);
-  let marker: ReturnType<typeof voiceCommitMarkerSchema.parse>;
+  let marker: VoiceCommitMarker;
   try {
     marker = voiceCommitMarkerSchema.parse(await readJson(artifactIo, voicePath(store, 'current.json')));
   } catch {
     throw new Error('voice publication is not committed');
   }
-  if (marker.projectId !== approvedScript.script.projectId
-    || marker.approvedScriptHash !== approvedScript.scriptHash) {
+  if (marker.projectId !== approvedScript.script.projectId || marker.approvedScriptHash !== approvedScript.scriptHash) {
     throw new Error('voice publication marker does not match durable approved script');
   }
+  return verifyTransaction(store, marker, probe, artifactIo);
+}
+
+export async function readVoiceAttemptAudit(
+  store: ProjectStore,
+  attemptIdInput: string,
+  artifactIo: VoiceArtifactIo = nodeVoiceArtifactIo,
+): Promise<VoiceAttemptAuditBundle> {
+  const approvedScript = await readApprovedScript(store);
+  const attemptId = transactionIdSchema.parse(attemptIdInput);
+  const bundle = await tryReadAttemptAudit(store, attemptId, artifactIo);
+  if (!bundle) throw new Error('voice attempt audit was not found');
+  assertAttemptMatches(bundle.attempt, approvedScript.script.projectId, approvedScript.scriptHash);
+  assertAuditBundle(bundle);
+  return bundle;
+}
+
+export async function cleanupVoiceArtifacts(
+  store: ProjectStore,
+  options: { keepRecentCommitted: number },
+  artifactIo: VoiceArtifactIo = nodeVoiceArtifactIo,
+): Promise<void> {
+  const retained = new Set<string>();
+  try {
+    const current = voiceCommitMarkerSchema.parse(await readJson(artifactIo, voicePath(store, 'current.json')));
+    retained.add(current.transactionId);
+  } catch {
+    // No current transaction is valid to retain.
+  }
+  const committed: Array<{ id: string; updatedAt: string }> = [];
+  try {
+    for (const attemptId of await artifactIo.readdir(voicePath(store, 'audit'))) {
+      const bundle = await tryReadAttemptAudit(store, attemptId, artifactIo);
+      if (!bundle) continue;
+      if (bundle.attempt.status === 'RECOVERABLE') retained.add(bundle.attempt.transactionId);
+      if (bundle.attempt.status === 'COMMITTED') {
+        committed.push({ id: bundle.attempt.transactionId, updatedAt: bundle.attempt.updatedAt });
+      }
+    }
+  } catch {
+    // Audit directory may not exist yet.
+  }
+  committed.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  for (const entry of committed.slice(0, Math.max(0, options.keepRecentCommitted))) retained.add(entry.id);
+  try {
+    for (const transactionId of await artifactIo.readdir(voicePath(store, 'transactions'))) {
+      if (!retained.has(transactionId)) await artifactIo.rm(voicePath(store, 'transactions', transactionId));
+    }
+  } catch {
+    // Transactions directory may not exist yet.
+  }
+}
+
+async function verifyTransaction(
+  store: ProjectStore,
+  marker: VoiceCommitMarker,
+  probe: AudioProbe,
+  artifactIo: VoiceArtifactIo,
+): Promise<CommittedVoice> {
   const directory = voicePath(store, 'transactions', marker.transactionId);
   const masterPath = join(directory, 'master.wav');
   const timingsPath = join(directory, 'word-timings.json');
@@ -236,12 +395,217 @@ export async function readCommittedVoice(
       || marker.authorizationHash !== report.authorizationHash) {
       throw new Error('binding mismatch');
     }
+    const metadata = audioMetadataSchema.parse(await probe.probe(masterPath));
+    assertAuthoritativeAudio(metadata);
+    if (metadata.durationMs !== report.durationMs
+      || metadata.sampleRateHz !== report.sampleRateHz
+      || metadata.channels !== report.channels
+      || metadata.formatName !== report.formatName
+      || metadata.codecName !== report.codecName) {
+      throw new Error('re-probe mismatch');
+    }
     assertTimingBounds(timings.words, report.durationMs);
-    assertAuthoritativeAudio(report);
     return { report, timings, charge, masterPath };
   } catch {
     throw new Error('voice publication commit does not match its artifacts');
   }
+}
+
+async function tryReadAttemptAudit(
+  store: ProjectStore,
+  attemptId: string,
+  io: VoiceArtifactIo,
+): Promise<VoiceAttemptAuditBundle | undefined> {
+  const directory = voicePath(store, 'audit', attemptId);
+  let attemptBytes: Buffer;
+  try {
+    attemptBytes = await io.readFile(join(directory, 'attempt.json'));
+  } catch {
+    return undefined;
+  }
+  const attempt = voiceAttemptAuditSchema.parse(JSON.parse(attemptBytes.toString('utf8')) as unknown);
+  return {
+    attempt,
+    reservation: await optionalAudit(io, join(directory, 'reservation.json'), voiceReservationAuditSchema),
+    settlement: await optionalAudit(io, join(directory, 'settlement.json'), voiceSettlementAuditSchema),
+    charge: await optionalAudit(io, join(directory, 'charge.json'), voiceChargeSchema),
+    result: await optionalAudit(io, join(directory, 'result.json'), voiceResultAuditSchema),
+  };
+}
+
+async function optionalAudit<T>(
+  io: VoiceArtifactIo,
+  path: string,
+  schema: { parse(value: unknown): T },
+): Promise<T | undefined> {
+  let bytes: Buffer;
+  try {
+    bytes = await io.readFile(path);
+  } catch {
+    return undefined;
+  }
+  return schema.parse(JSON.parse(bytes.toString('utf8')) as unknown);
+}
+
+async function writeAudit(io: VoiceArtifactIo, directory: string, name: string, value: unknown): Promise<void> {
+  await writeMarkerAtomically(io, directory, join(directory, name), value);
+}
+
+async function writeAttemptStatus(
+  io: VoiceArtifactIo,
+  store: ProjectStore,
+  attempt: VoiceAttemptAudit,
+  status: VoiceAttemptAudit['status'],
+  updatedAt: string,
+): Promise<void> {
+  const updated = voiceAttemptAuditSchema.parse({ ...attempt, status, updatedAt });
+  await writeAudit(io, voicePath(store, 'audit', attempt.attemptId), 'attempt.json', updated);
+}
+
+function assertAttemptMatches(attempt: VoiceAttemptAudit, projectId: string, scriptHash: string): void {
+  if (attempt.projectId !== projectId || attempt.approvedScriptHash !== scriptHash) {
+    throw new Error('voice attempt audit does not match durable approved script');
+  }
+}
+
+function assertAuditBundle(bundle: VoiceAttemptAuditBundle): void {
+  const { attempt, reservation, settlement, charge, result } = bundle;
+  if (!reservation
+    || reservation.attemptId !== attempt.attemptId
+    || reservation.projectId !== attempt.projectId
+    || reservation.approvedScriptHash !== attempt.approvedScriptHash
+    || reservation.providerId !== attempt.providerId
+    || reservation.idempotencyKey !== attempt.idempotencyKey) {
+    throw new Error('voice attempt reservation audit does not match the attempt');
+  }
+  const settledStatus = attempt.status === 'OVER_AUTHORIZATION'
+    || attempt.status === 'RECOVERABLE'
+    || attempt.status === 'COMMITTED';
+  if ((settledStatus || charge || settlement || result) && (!charge || !settlement)) {
+    throw new Error('voice attempt settlement audit is incomplete');
+  }
+  if (charge && settlement) {
+    const costsMatch = settlement.actual.providerId === charge.actual.providerId
+      && settlement.actual.currency === charge.actual.currency
+      && settlement.actual.amount === charge.actual.amount
+      && settlement.actual.basis === charge.actual.basis;
+    if (!costsMatch
+      || settlement.attemptId !== attempt.attemptId
+      || settlement.withinAuthorization !== (charge.status === 'SETTLED_WITHIN_AUTHORIZATION')
+      || charge.transactionId !== attempt.transactionId
+      || charge.projectId !== attempt.projectId
+      || charge.approvedScriptHash !== attempt.approvedScriptHash
+      || charge.providerId !== attempt.providerId
+      || charge.reservationId !== attempt.attemptId
+      || charge.idempotencyKey !== attempt.idempotencyKey) {
+      throw new Error('voice attempt charge audit does not match the reservation and settlement');
+    }
+  }
+  if (result && (result.attemptId !== attempt.attemptId
+    || result.transactionId !== attempt.transactionId
+    || result.marker.transactionId !== attempt.transactionId
+    || result.marker.projectId !== attempt.projectId
+    || result.marker.approvedScriptHash !== attempt.approvedScriptHash)) {
+    throw new Error('voice attempt result audit does not match the attempt');
+  }
+  if ((attempt.status === 'RECOVERABLE' || attempt.status === 'COMMITTED') && !result) {
+    throw new Error('voice attempt result audit is missing');
+  }
+}
+
+function createCharge(
+  transactionId: string,
+  projectId: string,
+  scriptHash: string,
+  providerId: string,
+  idempotencyKey: string,
+  estimate: CostEstimate,
+  actual: CostEstimate,
+  authorization: BudgetAuthorization,
+  withinAuthorization: boolean,
+  settledAt: string,
+): VoiceCharge {
+  return voiceChargeSchema.parse({
+    schemaVersion: 1,
+    transactionId,
+    projectId,
+    approvedScriptHash: scriptHash,
+    providerId,
+    reservationId: authorization.reservationId,
+    idempotencyKey,
+    authorizedMaxCny: authorization.maximumAmountCny,
+    remainingAtAuthorizationCny: authorization.remainingAtAuthorizationCny,
+    budgetScope,
+    estimate,
+    actual,
+    status: withinAuthorization ? 'SETTLED_WITHIN_AUTHORIZATION' : 'SETTLED_OVER_AUTHORIZATION',
+    settledAt,
+  });
+}
+
+async function createMarker(
+  io: VoiceArtifactIo,
+  projectId: string,
+  scriptHash: string,
+  transactionId: string,
+  authorizationReference: string,
+  authorizationHash: string,
+  committedAt: string,
+  masterPath: string,
+  timingsPath: string,
+  reportPath: string,
+  chargePath: string,
+): Promise<VoiceCommitMarker> {
+  return voiceCommitMarkerSchema.parse({
+    schemaVersion: 1,
+    transactionId,
+    projectId,
+    approvedScriptHash: scriptHash,
+    masterHash: await sha256File(io, masterPath),
+    timingsHash: await sha256File(io, timingsPath),
+    reportHash: await sha256File(io, reportPath),
+    chargeHash: await sha256File(io, chargePath),
+    authorizationReference,
+    authorizationHash,
+    committedAt,
+  });
+}
+
+function createReport(
+  projectId: string,
+  scriptHash: string,
+  transactionId: string,
+  synthesis: TtsResult,
+  metadata: AudioMetadata,
+  costCny: number,
+  generatedAt: string,
+): VoiceReport {
+  return voiceReportSchema.parse({
+    schemaVersion: 1,
+    status: 'READY',
+    projectId,
+    transactionId,
+    approvedScriptHash: scriptHash,
+    providerId: synthesis.providerId,
+    model: synthesis.model,
+    voiceId: synthesis.voiceId,
+    voiceKind: synthesis.voiceKind,
+    authorization: synthesis.authorization,
+    authorizationReference: synthesis.authorizationReference,
+    authorizationHash: synthesis.authorizationHash,
+    durationMs: metadata.durationMs,
+    sampleRateHz: metadata.sampleRateHz,
+    channels: metadata.channels,
+    formatName: metadata.formatName,
+    codecName: metadata.codecName,
+    integratedLufs: metadata.integratedLufs,
+    costCny,
+    generatedAt,
+  });
+}
+
+function now(request: Pick<GenerateVoiceRequest, 'now'>): string {
+  return (request.now ?? (() => new Date().toISOString()))();
 }
 
 function validateVoiceSelection(voice: VoiceSelection): VoiceSelection {
@@ -280,9 +644,7 @@ function parseProviderCost(value: CostEstimate, providerId: string, kind: 'estim
   } catch {
     throw new Error(`TTS ${kind} cost must be a finite, non-negative CNY value with an audit basis`);
   }
-  if (cost.providerId !== providerId) {
-    throw new Error(`TTS ${kind} cost must identify the selected provider`);
-  }
+  if (cost.providerId !== providerId) throw new Error(`TTS ${kind} cost must identify the selected provider`);
   return cost;
 }
 
@@ -300,11 +662,7 @@ function assertSynthesisBinding(result: TtsResult, adapterId: string, request: T
   }
 }
 
-function assertAuthoritativeAudio(metadata: {
-  sampleRateHz: number;
-  formatName: string;
-  codecName: string;
-}): void {
+function assertAuthoritativeAudio(metadata: { sampleRateHz: number; formatName: string; codecName: string }): void {
   const formats = metadata.formatName.toLowerCase().split(',');
   if (metadata.sampleRateHz !== 48_000
     || !formats.includes('wav')
