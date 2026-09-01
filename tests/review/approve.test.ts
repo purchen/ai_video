@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -6,13 +6,17 @@ import type { ProjectManifest } from '../../src/domain/schemas';
 import {
   approveScript,
   approveTopic,
+  approvedScriptSchema,
   hashScript,
+  readApprovedScript,
+  readApprovedTopic,
   requireTopicApprovalForDraft,
   type ReviewProject,
 } from '../../src/review/approve';
 import { sectionOrder } from '../../src/script/build-script';
 import { ProjectStore } from '../../src/store/project-store';
 import type { TopicCandidate } from '../../src/topic/discover';
+import type { ResearchBrief } from '../../src/research/build-brief';
 
 const now = '2026-09-01T00:00:00.000Z';
 const temporaryDirectories: string[] = [];
@@ -30,6 +34,28 @@ const candidate: TopicCandidate = {
   risks: [],
   eligibleForRecommendation: true,
   score: { relevance: 5, tension: 4, evidenceAvailability: 5, independentJudgment: 5, laneFit: 5, visualDifficulty: 2, risk: 1, total: 4.5 },
+};
+
+const brief: ResearchBrief = {
+  topic: {
+    title: candidate.title,
+    normalizedTopic: candidate.normalizedTopic,
+    questionHook: candidate.questionHook,
+  },
+  confirmedFacts: [{
+    claimKey: 'registration-extended',
+    value: 'affirmed',
+    text: '官方公告确认报名服务已延长。',
+    sourceIds: ['official-1'],
+  }],
+  conflicts: [],
+  unknowns: [],
+  candidateLenses: ['user-experience', 'public-service'],
+  risks: [],
+  publicQuestions: [],
+  explanationNotes: [],
+  canDraftScript: true,
+  status: 'RESEARCHED',
 };
 
 const script = {
@@ -82,6 +108,17 @@ async function reviewProject(state: ProjectManifest['workflowState']): Promise<R
     },
     candidates: [{ id: 'candidate-001', candidate }],
     draft: script,
+    brief,
+  };
+}
+
+function failWrite(project: ReviewProject, writeNumber: number): void {
+  const original = project.store.writeJson.bind(project.store);
+  let writes = 0;
+  project.store.writeJson = async (name, schema, value) => {
+    writes += 1;
+    if (writes === writeNumber) throw new Error('injected write failure');
+    await original(name, schema, value);
   };
 }
 
@@ -112,6 +149,21 @@ describe('human approval gates', () => {
     expect(approval).toMatchObject({ schemaVersion: 1, approvedBy: 'editor', candidateId: 'candidate-001' });
     expect(project.manifest.workflowState).toBe('TOPIC_APPROVED');
     expect(JSON.parse(await readFile(join(project.store.root, 'topic-card.json'), 'utf8'))).toEqual(approval);
+    expect(await readApprovedTopic(project.store)).toEqual(approval);
+  });
+
+  it('rejects a half-committed topic approval when the project write fails', async () => {
+    const project = await reviewProject('TOPIC_REVIEW_REQUIRED');
+    failWrite(project, 2);
+
+    await expect(approveTopic(project, 'candidate-001', 'editor')).rejects.toThrow('injected write failure');
+
+    expect(JSON.parse(await readFile(join(project.store.root, 'topic-card.json'), 'utf8'))).toMatchObject({
+      candidateId: 'candidate-001',
+    });
+    await expect(access(join(project.store.root, 'topic-approval.commit.json'))).rejects.toThrow();
+    await expect(readApprovedTopic(project.store)).rejects.toThrow('topic approval is not committed');
+    expect(project.manifest.workflowState).toBe('TOPIC_REVIEW_REQUIRED');
   });
 
   it('cannot approve a script until script review is pending', async () => {
@@ -131,7 +183,53 @@ describe('human approval gates', () => {
     expect(project.manifest.workflowState).toBe('SCRIPT_APPROVED');
     expect(Object.isFrozen(approved.script)).toBe(true);
     expect(JSON.parse(await readFile(join(project.store.root, 'approved-script.json'), 'utf8'))).toEqual(approved);
+    expect(await readApprovedScript(project.store)).toEqual(approved);
     expect(() => { (approved.script as { title: string }).title = 'mutated'; }).toThrow();
+  });
+
+  it('revalidates mechanism lenses when a generated draft is changed before approval', async () => {
+    const project = await reviewProject('SCRIPT_REVIEW_REQUIRED');
+    project.draft = {
+      ...script,
+      sections: script.sections.map((section) => section.type === 'mechanism'
+        ? { ...section, lenses: ['invented-lens'] }
+        : section),
+    };
+
+    await expect(approveScript(project, 'editor')).rejects.toThrow(
+      'mechanism lens invented-lens is not present in the research brief',
+    );
+    await expect(access(join(project.store.root, 'approved-script.json'))).rejects.toThrow();
+  });
+
+  it('rejects a half-committed script approval when the project write fails', async () => {
+    const project = await reviewProject('SCRIPT_REVIEW_REQUIRED');
+    failWrite(project, 2);
+
+    await expect(approveScript(project, 'editor')).rejects.toThrow('injected write failure');
+
+    expect(JSON.parse(await readFile(join(project.store.root, 'approved-script.json'), 'utf8'))).toMatchObject({
+      scriptHash: hashScript(script),
+    });
+    await expect(access(join(project.store.root, 'script-approval.commit.json'))).rejects.toThrow();
+    await expect(readApprovedScript(project.store)).rejects.toThrow('script approval is not committed');
+    expect(project.manifest.workflowState).toBe('SCRIPT_REVIEW_REQUIRED');
+  });
+
+  it('rejects a persisted approved script whose content no longer matches its hash', async () => {
+    const project = await reviewProject('SCRIPT_REVIEW_REQUIRED');
+    const approved = await approveScript(project, 'editor');
+    const tampered = { ...approved, script: { ...approved.script, title: 'tampered title' } };
+    await writeFile(
+      join(project.store.root, 'approved-script.json'),
+      `${JSON.stringify(tampered, null, 2)}\n`,
+      'utf8',
+    );
+
+    expect(() => approvedScriptSchema.parse(tampered)).toThrow('approved script hash does not match script content');
+    await expect(readApprovedScript(project.store)).rejects.toThrow(
+      'approved script hash does not match script content',
+    );
   });
 });
 

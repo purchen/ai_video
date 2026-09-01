@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
   projectManifestSchema,
@@ -6,9 +5,11 @@ import {
   type ProjectManifest,
   type ScriptDocument,
 } from '../domain/schemas';
+import type { ResearchBrief } from '../research/build-brief';
+import { hashCanonicalJson, hashScript } from '../script/hash-script';
+import { assertValidScript } from '../script/validate-script';
 import type { ProjectStore } from '../store/project-store';
 import type { TopicCandidate } from '../topic/discover';
-import { assertValidScript } from '../script/validate-script';
 
 const topicScoreSchema = z.object({
   relevance: z.number(),
@@ -46,6 +47,24 @@ export const approvedScriptSchema = z.object({
   approvedBy: z.string().min(1),
   scriptHash: z.string().regex(/^[a-f0-9]{64}$/),
   script: scriptDocumentSchema,
+}).superRefine((approved, context) => {
+  if (hashScript(approved.script) !== approved.scriptHash) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'approved script hash does not match script content',
+      path: ['scriptHash'],
+    });
+  }
+});
+
+const approvalCommitSchema = z.object({
+  schemaVersion: z.literal(1),
+  approvalType: z.enum(['topic', 'script']),
+  projectId: z.string().min(1),
+  artifactName: z.enum(['topic-card.json', 'approved-script.json']),
+  artifactHash: z.string().regex(/^[a-f0-9]{64}$/),
+  expectedWorkflowState: z.enum(['TOPIC_APPROVED', 'SCRIPT_APPROVED']),
+  committedAt: z.string().datetime(),
 });
 
 export type ApprovalRecord = z.infer<typeof approvalRecordSchema>;
@@ -63,7 +82,10 @@ export interface ReviewProject {
   manifest: ProjectManifest;
   candidates: Array<{ id: string; candidate: TopicCandidate }>;
   draft?: ScriptDocument;
+  brief: ResearchBrief;
 }
+
+export { hashScript } from '../script/hash-script';
 
 /** State guard for the Task 9 orchestrator without introducing run-stage early. */
 export function requireTopicApprovalForDraft(project: Pick<ReviewProject, 'manifest'>): void {
@@ -98,11 +120,21 @@ export async function approveTopic(
     workflowState: 'TOPIC_APPROVED',
     updatedAt: approval.approvedAt,
   });
+  const commit = approvalCommitSchema.parse({
+    schemaVersion: 1,
+    approvalType: 'topic',
+    projectId: manifest.id,
+    artifactName: 'topic-card.json',
+    artifactHash: hashCanonicalJson(approval),
+    expectedWorkflowState: 'TOPIC_APPROVED',
+    committedAt: approval.approvedAt,
+  });
 
   await project.store.writeJson('topic-card.json', approvalRecordSchema, approval);
   await project.store.writeJson('project.json', projectManifestSchema, manifest);
+  await project.store.writeJson('topic-approval.commit.json', approvalCommitSchema, commit);
   project.manifest = manifest;
-  return approval;
+  return deepFreeze(approval);
 }
 
 export async function approveScript(project: ReviewProject, actor: string): Promise<ApprovedScript> {
@@ -112,7 +144,7 @@ export async function approveScript(project: ReviewProject, actor: string): Prom
   }
 
   const draft = scriptDocumentSchema.parse(project.draft ?? project.manifest.script);
-  assertValidScript(draft, undefined, project.manifest.sources);
+  assertValidScript(draft, project.brief, project.manifest.sources);
   const approvedAt = new Date().toISOString();
   const approved = approvedScriptSchema.parse({
     schemaVersion: 1,
@@ -127,26 +159,71 @@ export async function approveScript(project: ReviewProject, actor: string): Prom
     updatedAt: approvedAt,
     script: draft,
   });
+  const commit = approvalCommitSchema.parse({
+    schemaVersion: 1,
+    approvalType: 'script',
+    projectId: manifest.id,
+    artifactName: 'approved-script.json',
+    artifactHash: hashCanonicalJson(approved),
+    expectedWorkflowState: 'SCRIPT_APPROVED',
+    committedAt: approvedAt,
+  });
 
   await project.store.writeJson('approved-script.json', approvedScriptSchema, approved);
   await project.store.writeJson('project.json', projectManifestSchema, manifest);
+  await project.store.writeJson('script-approval.commit.json', approvalCommitSchema, commit);
   project.manifest = manifest;
   return deepFreeze(approved);
 }
 
-export function hashScript(script: unknown): string {
-  const validated = scriptDocumentSchema.parse(script);
-  return createHash('sha256').update(canonicalJson(validated)).digest('hex');
+export async function readApprovedTopic(store: ProjectStore): Promise<ApprovalRecord> {
+  const commit = await readCommit(store, 'topic-approval.commit.json', 'topic');
+  const approval = await store.readJson('topic-card.json', approvalRecordSchema);
+  const manifest = await store.readJson('project.json', projectManifestSchema);
+  assertCommitMatches(commit, manifest, 'topic-card.json', hashCanonicalJson(approval), 'TOPIC_APPROVED');
+  if (manifest.topic !== approval.candidate.title) throw new Error('topic approval does not match project topic');
+  return deepFreeze(approval);
 }
 
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+export async function readApprovedScript(store: ProjectStore): Promise<ApprovedScript> {
+  const commit = await readCommit(store, 'script-approval.commit.json', 'script');
+  const approved = await store.readJson('approved-script.json', approvedScriptSchema);
+  const manifest = await store.readJson('project.json', projectManifestSchema);
+  assertCommitMatches(commit, manifest, 'approved-script.json', hashCanonicalJson(approved), 'SCRIPT_APPROVED');
+  if (!manifest.script || hashScript(manifest.script) !== approved.scriptHash) {
+    throw new Error('approved script does not match the committed project script');
+  }
+  return deepFreeze(approved);
+}
 
-  const entries = Object.entries(value)
-    .filter(([, entry]) => entry !== undefined)
-    .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0);
-  return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(',')}}`;
+async function readCommit(
+  store: ProjectStore,
+  name: 'topic-approval.commit.json' | 'script-approval.commit.json',
+  approvalType: 'topic' | 'script',
+): Promise<z.infer<typeof approvalCommitSchema>> {
+  try {
+    const commit = await store.readJson(name, approvalCommitSchema);
+    if (commit.approvalType !== approvalType) throw new Error('wrong approval type');
+    return commit;
+  } catch {
+    throw new Error(`${approvalType} approval is not committed`);
+  }
+}
+
+function assertCommitMatches(
+  commit: z.infer<typeof approvalCommitSchema>,
+  manifest: ProjectManifest,
+  artifactName: 'topic-card.json' | 'approved-script.json',
+  artifactHash: string,
+  expectedWorkflowState: 'TOPIC_APPROVED' | 'SCRIPT_APPROVED',
+): void {
+  if (commit.projectId !== manifest.id
+    || commit.artifactName !== artifactName
+    || commit.artifactHash !== artifactHash
+    || commit.expectedWorkflowState !== expectedWorkflowState
+    || manifest.workflowState !== expectedWorkflowState) {
+    throw new Error(`${commit.approvalType} approval commit does not match artifact and project state`);
+  }
 }
 
 function deepFreeze<T>(value: T): T {

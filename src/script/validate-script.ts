@@ -41,6 +41,9 @@ export function validateScript(
   }
 
   const sentences = Array.isArray(input.sentences) ? input.sentences : [];
+  if (!brief && !explicitSources && sentences.some((sentence) => isRecord(sentence) && sentence.type === 'fact')) {
+    errors.push('fact evidence context is required');
+  }
   for (const sentence of sentences) {
     if (!isRecord(sentence) || typeof sentence.id !== 'string') continue;
     const sourceIds = Array.isArray(sentence.sourceIds) ? sentence.sourceIds : [];

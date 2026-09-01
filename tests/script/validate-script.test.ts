@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { scriptDocumentSchema } from '../../src/domain/schemas';
+import { scriptDocumentSchema, type ProjectManifest } from '../../src/domain/schemas';
 import type { LanguageModelAdapter } from '../../src/providers/contracts';
 import type { ResearchBrief } from '../../src/research/build-brief';
 import { buildScript, sectionOrder } from '../../src/script/build-script';
@@ -59,6 +59,34 @@ const validScript = {
   createdAt,
   updatedAt: createdAt,
 };
+
+async function scriptProject(state: ProjectManifest['workflowState']) {
+  const parent = await mkdtemp(join(tmpdir(), 'script-build-'));
+  temporaryDirectories.push(parent);
+  const store = await ProjectStore.create(parent, 'topic-001');
+  return {
+    store,
+    manifest: {
+      schemaVersion: 1 as const,
+      id: 'topic-001',
+      topic: brief.topic.title,
+      workflowState: state,
+      createdAt,
+      updatedAt: createdAt,
+      sources: [{
+        schemaVersion: 1 as const,
+        id: 'official-1',
+        url: 'https://example.com/official',
+        title: 'Official notice',
+        publisher: 'Example',
+        summary: '官方公告确认报名服务已延长。',
+        sourceType: 'official-data' as const,
+        evidenceWeight: 'high' as const,
+        capturedAt: createdAt,
+      }],
+    },
+  };
+}
 
 describe('validateScript', () => {
   it('rejects fact sentences without source ids', () => {
@@ -123,10 +151,34 @@ describe('validateScript', () => {
     expect(validateScript({ ...validScript, sentences: mislabeledOpinion }, brief).errors)
       .toContain('opinion sentence sentence-judgment must not carry factual source ids');
   });
+
+  it('rejects facts when no evidence context is available', () => {
+    expect(validateScript(validScript).errors).toContain('fact evidence context is required');
+  });
 });
 
 describe('buildScript', () => {
-  it('requests structured JSON, validates it, and persists a schema-versioned draft', async () => {
+  it('does not call the model or write files before topic approval', async () => {
+    let calls = 0;
+    const adapter: LanguageModelAdapter = {
+      id: 'deterministic-fake',
+      async generate() {
+        calls += 1;
+        return validScript;
+      },
+    };
+    const project = await scriptProject('TOPIC_REVIEW_REQUIRED');
+
+    await expect(buildScript(project, brief, adapter)).rejects.toThrow(
+      'TOPIC_APPROVED is required before DRAFT_SCRIPT',
+    );
+
+    expect(calls).toBe(0);
+    await expect(access(join(project.store.root, 'script-draft.json'))).rejects.toThrow();
+    await expect(access(join(project.store.root, 'project.json'))).rejects.toThrow();
+  });
+
+  it('requests structured JSON, persists the draft, and advances to script review', async () => {
     const requests: unknown[] = [];
     const adapter: LanguageModelAdapter = {
       id: 'deterministic-fake',
@@ -135,15 +187,19 @@ describe('buildScript', () => {
         return validScript;
       },
     };
-    const parent = await mkdtemp(join(tmpdir(), 'script-build-'));
-    temporaryDirectories.push(parent);
-    const store = await ProjectStore.create(parent, 'topic-001');
+    const project = await scriptProject('TOPIC_APPROVED');
 
-    const script = await buildScript(brief, adapter, store);
+    const script = await buildScript(project, brief, adapter);
 
     expect(script.sections.map((section) => section.type)).toEqual(sectionOrder);
     expect(requests).toMatchObject([{ responseFormat: 'json' }]);
-    expect(JSON.parse(await readFile(join(store.root, 'script-draft.json'), 'utf8'))).toEqual(script);
+    const savedDraft = JSON.parse(await readFile(join(project.store.root, 'script-draft.json'), 'utf8'));
+    expect(savedDraft).toEqual(script);
+    expect(project.manifest.workflowState).toBe('SCRIPT_REVIEW_REQUIRED');
+    expect(JSON.parse(await readFile(join(project.store.root, 'project.json'), 'utf8'))).toMatchObject({
+      workflowState: 'SCRIPT_REVIEW_REQUIRED',
+      script: savedDraft,
+    });
   });
 
   it('rejects invalid model output before persistence', async () => {
@@ -153,13 +209,11 @@ describe('buildScript', () => {
         return { ...validScript, estimatedDurationMs: 30_000 };
       },
     };
-    const parent = await mkdtemp(join(tmpdir(), 'script-build-'));
-    temporaryDirectories.push(parent);
-    const store = await ProjectStore.create(parent, 'topic-001');
+    const project = await scriptProject('TOPIC_APPROVED');
 
-    await expect(buildScript(brief, adapter, store)).rejects.toThrow(
+    await expect(buildScript(project, brief, adapter)).rejects.toThrow(
       'estimated duration must be between 60000 and 120000 ms',
     );
-    await expect(readFile(join(store.root, 'script-draft.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(project.store.root, 'script-draft.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

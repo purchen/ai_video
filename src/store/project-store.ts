@@ -30,6 +30,12 @@ export class ProjectStore {
     await rename(temporary, target);
   }
 
+  async readJson<T>(name: string, schema: ZodType<T>): Promise<T> {
+    this.assertFileName(name);
+    const value: unknown = JSON.parse(await readFile(join(this.root, name), 'utf8'));
+    return schema.parse(value);
+  }
+
   async appendEvent(event: ProjectEvent): Promise<string> {
     const validatedEvent = projectEventSchema.parse(event);
     const eventWithoutHash = { ...validatedEvent, schemaVersion: 1 as const };
