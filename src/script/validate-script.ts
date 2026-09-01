@@ -6,6 +6,7 @@ import {
   type ScriptDocument,
   type SourceRecord,
 } from '../domain/schemas';
+import { narrationBindingErrors } from './narration';
 
 export interface ScriptValidationResult {
   valid: boolean;
@@ -81,12 +82,7 @@ export function validateScript(
       }
     }
 
-    const sentenceIds = new Set(parsed.data.sentences.map((sentence) => sentence.id));
-    for (const section of parsed.data.sections) {
-      for (const sentenceId of section.sentenceIds) {
-        if (!sentenceIds.has(sentenceId)) errors.push(`section ${section.type} references unknown sentence ${sentenceId}`);
-      }
-    }
+    errors.push(...narrationBindingErrors(parsed.data));
   }
 
   return result(errors);

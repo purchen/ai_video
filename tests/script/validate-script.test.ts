@@ -112,6 +112,16 @@ async function durablyApprovedProject(): Promise<ReviewProject> {
   return reviewProject;
 }
 
+function countWrites(project: ReviewProject): () => number {
+  const original = project.store.writeJson.bind(project.store);
+  let writes = 0;
+  project.store.writeJson = async (name, schema, value) => {
+    writes += 1;
+    await original(name, schema, value);
+  };
+  return () => writes;
+}
+
 describe('validateScript', () => {
   it('rejects fact sentences without source ids', () => {
     const result = validateScript({
@@ -219,6 +229,36 @@ describe('buildScript', () => {
     await expect(access(join(project.store.root, 'script-draft.json'))).rejects.toThrow();
   });
 
+  it('does not use a durable Topic A approval to draft Topic B', async () => {
+    let calls = 0;
+    const adapter: LanguageModelAdapter = {
+      id: 'deterministic-fake',
+      async generate() {
+        calls += 1;
+        return validScript;
+      },
+    };
+    const project = await durablyApprovedProject();
+    const projectBefore = await readFile(join(project.store.root, 'project.json'), 'utf8');
+    const writes = countWrites(project);
+    const mismatchedBriefs: ResearchBrief[] = [
+      { ...brief, topic: { ...brief.topic, title: '另一个主题' } },
+      { ...brief, topic: { ...brief.topic, normalizedTopic: 'different|topic|2026-09-01' } },
+      { ...brief, topic: { ...brief.topic, questionHook: '另一个问题？' } },
+    ];
+
+    for (const mismatchedBrief of mismatchedBriefs) {
+      await expect(buildScript(project, mismatchedBrief, adapter)).rejects.toThrow(
+        'research brief topic does not match approved topic',
+      );
+    }
+
+    expect(calls).toBe(0);
+    expect(writes()).toBe(0);
+    expect(await readFile(join(project.store.root, 'project.json'), 'utf8')).toBe(projectBefore);
+    await expect(access(join(project.store.root, 'script-draft.json'))).rejects.toThrow();
+  });
+
   it('requests structured JSON, persists the draft, and advances to script review', async () => {
     const requests: unknown[] = [];
     const adapter: LanguageModelAdapter = {
@@ -256,5 +296,26 @@ describe('buildScript', () => {
       'estimated duration must be between 60000 and 120000 ms',
     );
     await expect(readFile(join(project.store.root, 'script-draft.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('rejects model output for another project before any store write', async () => {
+    const adapter: LanguageModelAdapter = {
+      id: 'deterministic-fake',
+      async generate() {
+        return { ...validScript, projectId: 'another-project' };
+      },
+    };
+    const project = await durablyApprovedProject();
+    const projectBefore = await readFile(join(project.store.root, 'project.json'), 'utf8');
+    const writes = countWrites(project);
+
+    await expect(buildScript(project, brief, adapter)).rejects.toThrow(
+      'script projectId must match durable project id',
+    );
+
+    expect(writes()).toBe(0);
+    expect(project.manifest.workflowState).toBe('TOPIC_APPROVED');
+    expect(await readFile(join(project.store.root, 'project.json'), 'utf8')).toBe(projectBefore);
+    await expect(access(join(project.store.root, 'script-draft.json'))).rejects.toThrow();
   });
 });

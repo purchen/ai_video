@@ -35,6 +35,14 @@ export async function buildScript(
     || hashCanonicalJson(durableApproval.manifest) !== hashCanonicalJson(project.manifest)) {
     throw new Error('in-memory project does not match durable topic approval state');
   }
+  const approvedTopic = {
+    title: durableApproval.approval.candidate.title,
+    normalizedTopic: durableApproval.approval.candidate.normalizedTopic,
+    questionHook: durableApproval.approval.candidate.questionHook,
+  };
+  if (hashCanonicalJson(approvedTopic) !== hashCanonicalJson(brief.topic)) {
+    throw new Error('research brief topic does not match approved topic');
+  }
   if (!brief.canDraftScript || brief.status !== 'RESEARCHED') {
     throw new Error('research brief is not eligible for script drafting');
   }
@@ -46,6 +54,9 @@ export async function buildScript(
   });
   const script = scriptDocumentSchema.parse(output);
   assertValidScript(script, brief);
+  if (script.projectId !== durableApproval.manifest.id) {
+    throw new Error('script projectId must match durable project id');
+  }
 
   const draftedState = transition(durableApproval.manifest.workflowState, 'DRAFT_SCRIPT');
   const reviewState = transition(draftedState, 'REQUEST_SCRIPT_REVIEW');
