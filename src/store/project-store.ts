@@ -3,24 +3,15 @@ import { basename, join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import type { ZodType } from 'zod';
 import { ProjectStoreError } from '../domain/errors';
+import { persistedProjectEventSchema, projectEventSchema, type ProjectEvent } from '../domain/schemas';
 
-export interface ProjectEvent {
-  id: string;
-  type: string;
-  occurredAt: string;
-  data?: Record<string, unknown>;
-}
-
-interface PersistedProjectEvent extends ProjectEvent {
-  schemaVersion: 1;
-  hash: string;
-}
+export type { ProjectEvent } from '../domain/schemas';
 
 export class ProjectStore {
   private constructor(public readonly root: string) {}
 
   static async create(parentDirectory: string, projectId: string): Promise<ProjectStore> {
-    if (!projectId.trim() || basename(projectId) !== projectId) {
+    if (!projectId.trim() || projectId === '.' || projectId === '..' || basename(projectId) !== projectId) {
       throw new ProjectStoreError('projectId must be a non-empty directory name');
     }
 
@@ -40,9 +31,10 @@ export class ProjectStore {
   }
 
   async appendEvent(event: ProjectEvent): Promise<string> {
-    const eventWithoutHash = { schemaVersion: 1 as const, ...event };
+    const validatedEvent = projectEventSchema.parse(event);
+    const eventWithoutHash = { ...validatedEvent, schemaVersion: 1 as const };
     const hash = createHash('sha256').update(JSON.stringify(eventWithoutHash)).digest('hex');
-    const persisted: PersistedProjectEvent = { ...eventWithoutHash, hash };
+    const persisted = persistedProjectEventSchema.parse({ ...eventWithoutHash, hash });
 
     await appendFile(join(this.root, 'events.jsonl'), `${JSON.stringify(persisted)}\n`, 'utf8');
     return hash;

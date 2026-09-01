@@ -21,12 +21,24 @@ export const sourceRecordSchema = z.object({
   capturedAt: z.string().datetime(),
 });
 
+export type SourceRecord = z.infer<typeof sourceRecordSchema>;
+
 export const scriptSentenceSchema = z.object({
   id: z.string().min(1),
   text: z.string().min(1),
   type: z.enum(['hook', 'fact', 'opinion', 'transition', 'call-to-action']),
   sourceIds: z.array(z.string().min(1)),
+}).superRefine((sentence, context) => {
+  if (sentence.type === 'fact' && sentence.sourceIds.length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Factual sentences require at least one source ID',
+      path: ['sourceIds'],
+    });
+  }
 });
+
+export type ScriptSentence = z.infer<typeof scriptSentenceSchema>;
 
 export const scriptDocumentSchema = z.object({
   schemaVersion: z.literal(1),
@@ -38,6 +50,24 @@ export const scriptDocumentSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export type ScriptDocument = z.infer<typeof scriptDocumentSchema>;
+
+export function validateEvidenceBindings(sources: SourceRecord[], sentences: ScriptSentence[]): void {
+  const sourceById = new Map(sources.map((source) => [source.id, source]));
+
+  for (const sentence of sentences) {
+    if (sentence.type !== 'fact') continue;
+
+    for (const sourceId of sentence.sourceIds) {
+      const source = sourceById.get(sourceId);
+      if (!source) throw new Error(`Factual sentence references unknown source ${sourceId}`);
+      if (source.sourceType === 'comment-sample') {
+        throw new Error(`Factual sentence cannot use comment-sample source ${sourceId}`);
+      }
+    }
+  }
+}
+
 export const projectManifestSchema = z.object({
   schemaVersion: z.literal(1),
   id: z.string().min(1),
@@ -47,9 +77,31 @@ export const projectManifestSchema = z.object({
   updatedAt: z.string().datetime(),
   sources: z.array(sourceRecordSchema),
   script: scriptDocumentSchema.optional(),
+}).superRefine((project, context) => {
+  if (!project.script) return;
+
+  try {
+    validateEvidenceBindings(project.sources, project.script.sentences);
+  } catch (error) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: error instanceof Error ? error.message : 'Invalid factual evidence bindings',
+      path: ['script', 'sentences'],
+    });
+  }
 });
 
-export type SourceRecord = z.infer<typeof sourceRecordSchema>;
-export type ScriptSentence = z.infer<typeof scriptSentenceSchema>;
-export type ScriptDocument = z.infer<typeof scriptDocumentSchema>;
+export const projectEventSchema = z.object({
+  id: z.string().min(1),
+  type: z.string().min(1),
+  occurredAt: z.string().datetime(),
+  data: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const persistedProjectEventSchema = projectEventSchema.extend({
+  schemaVersion: z.literal(1),
+  hash: z.string().regex(/^[a-f0-9]{64}$/),
+});
+
 export type ProjectManifest = z.infer<typeof projectManifestSchema>;
+export type ProjectEvent = z.infer<typeof projectEventSchema>;

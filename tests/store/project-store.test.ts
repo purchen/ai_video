@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { mkdtemp } from 'node:fs/promises';
 import { afterEach, describe, expect, it } from 'vitest';
 import { projectManifestSchema, sourceRecordSchema } from '../../src/domain/schemas';
-import { ProjectStore } from '../../src/store/project-store';
+import { ProjectStore, type ProjectEvent } from '../../src/store/project-store';
 
 const temporaryDirectories: string[] = [];
 
@@ -50,5 +50,38 @@ describe('ProjectStore', () => {
 
     await expect(store.writeJson('source.json', sourceRecordSchema, { id: '' })).rejects.toThrow();
     await expect(readFile(join(store.root, 'source.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('validates events before writing the event log', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'short-video-store-'));
+    temporaryDirectories.push(tempDir);
+    const store = await ProjectStore.create(tempDir, 'topic-001');
+
+    await expect(store.appendEvent({ id: '', type: 'PROJECT_CREATED', occurredAt: 'not-a-date' })).rejects.toThrow();
+    await expect(readFile(join(store.root, 'events.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('persists schemaVersion 1 for an event supplied by untyped runtime input', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'short-video-store-'));
+    temporaryDirectories.push(tempDir);
+    const store = await ProjectStore.create(tempDir, 'topic-001');
+    const event = {
+      schemaVersion: 2,
+      id: 'event-001',
+      type: 'PROJECT_CREATED',
+      occurredAt: '2026-09-01T00:00:00.000Z',
+    } as unknown as ProjectEvent;
+
+    await store.appendEvent(event);
+    const saved = JSON.parse((await readFile(join(store.root, 'events.jsonl'), 'utf8')).trim());
+    expect(saved.schemaVersion).toBe(1);
+  });
+
+  it('rejects dot project identifiers that escape the storage directory', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'short-video-store-'));
+    temporaryDirectories.push(tempDir);
+
+    await expect(ProjectStore.create(tempDir, '.')).rejects.toThrow('projectId must be a non-empty directory name');
+    await expect(ProjectStore.create(tempDir, '..')).rejects.toThrow('projectId must be a non-empty directory name');
   });
 });
