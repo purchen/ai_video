@@ -1,0 +1,51 @@
+[
+  {
+    "title": "城市夜校报名火爆，年轻人下班后还要上课",
+    "url": "https://public.example.org/city-night-school-a",
+    "publisher": "城市公共观察",
+    "publishedAt": "2026-09-01T00:00:00.000+08:00",
+    "summary": "公开报名数据和课程安排显示，城市夜校正在扩容。"
+  },
+  {
+    "title": "下班后的城市夜校为何突然火了？",
+    "url": "https://public.example.org/city-night-school-b",
+    "publisher": "公共数据周刊",
+    "publishedAt": "2026-09-01T01:00:00.000+08:00",
+    "summary": "多地公开发布夜校课程和报名人数。"
+  },
+  {
+    "title": "社区食堂延长晚餐时间",
+    "url": "https://public.example.org/community-dining",
+    "publisher": "民生服务发布",
+    "publishedAt": "2026-09-01T00:30:00.000+08:00",
+    "summary": "服务公告说明试点社区食堂将营业至晚上八点。"
+  },
+  {
+    "title": "公共图书馆推出夜读专区",
+    "url": "https://public.example.org/library-night-reading",
+    "publisher": "文化服务发布",
+    "publishedAt": "2026-09-01T02:00:00.000+08:00",
+    "summary": "官方通知公布夜读专区开放时间与活动安排。"
+  },
+  {
+    "title": "无纸化挂号覆盖更多医院",
+    "url": "https://public.example.org/paperless-registration",
+    "publisher": "健康服务发布",
+    "publishedAt": "2026-09-01T03:00:00.000+08:00",
+    "summary": "政务公开信息列出新增服务医院和操作流程。"
+  },
+  {
+    "title": "旧衣回收箱进入居民小区",
+    "url": "https://public.example.org/clothing-recycling",
+    "publisher": "绿色生活发布",
+    "publishedAt": "2026-09-01T04:00:00.000+08:00",
+    "summary": "公开试点方案说明回收范围和处理去向。"
+  },
+  {
+    "title": "公共自行车新增亲子座椅",
+    "url": "https://public.example.org/bike-child-seat",
+    "publisher": "出行服务发布",
+    "publishedAt": "2026-09-01T05:00:00.000+08:00",
+    "summary": "运营方公告公布新增车型和安全提示。"
+  }
+]

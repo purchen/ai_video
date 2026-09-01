@@ -1,0 +1,175 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import type { RawTopic, TopicSourceAdapter } from '../providers/contracts';
+
+export type TopicLane = '社会观察' | '生活态度' | '思考辩论';
+
+export interface TopicScore {
+  relevance: number;
+  tension: number;
+  evidenceAvailability: number;
+  independentJudgment: number;
+  laneFit: number;
+  visualDifficulty: number;
+  risk: number;
+  total: number;
+}
+
+export interface TopicCandidate {
+  title: string;
+  normalizedTopic: string;
+  questionHook: string;
+  sourceUrls: string[];
+  sourcePublishers: string[];
+  risks: string[];
+  eligibleForRecommendation: boolean;
+  score: TopicScore;
+}
+
+export interface DiscoverTopicsOptions {
+  count: number;
+  lane: TopicLane[];
+  now: Date;
+  windowHours?: number;
+  outputPath?: string;
+}
+
+interface NormalizedTopic {
+  entity: string;
+  event: string;
+  timeWindow: string;
+  key: string;
+}
+
+interface ScoredTopic {
+  raw: RawTopic;
+  normalized: NormalizedTopic;
+  risks: string[];
+  score: TopicScore;
+}
+
+export async function discoverTopics(
+  adapters: TopicSourceAdapter[],
+  options: DiscoverTopicsOptions,
+): Promise<TopicCandidate[]> {
+  if (!Number.isInteger(options.count) || options.count < 1) {
+    throw new Error('count must be a positive integer');
+  }
+
+  const windowHours = options.windowHours ?? 24;
+  const window = { from: new Date(options.now.getTime() - windowHours * 60 * 60 * 1000), to: options.now };
+  const sources = (await Promise.all(adapters.map((adapter) => adapter.fetch(window)))).flat();
+  const grouped = new Map<string, ScoredTopic[]>();
+
+  for (const raw of sources) {
+    const normalized = normalizeTopic(raw, options.now);
+    const risks = identifyRisks(raw);
+    const score = scoreTopic(raw, options.lane, options.now, risks);
+    const entries = grouped.get(normalized.key) ?? [];
+    entries.push({ raw, normalized, risks, score });
+    grouped.set(normalized.key, entries);
+  }
+
+  const candidates = [...grouped.values()]
+    .map(toCandidate)
+    .sort(compareCandidates)
+    .slice(0, options.count);
+
+  const outputPath = resolve(options.outputPath ?? 'topic-candidates.json');
+  await mkdir(dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, `${JSON.stringify(candidates, null, 2)}\n`, 'utf8');
+  return candidates;
+}
+
+function normalizeTopic(raw: RawTopic, now: Date): NormalizedTopic {
+  const text = `${raw.title} ${raw.summary ?? ''}`.toLowerCase().replace(/\s+/g, '');
+  const entity = findFirst(text, [
+    ['城市夜校', '城市夜校'], ['夜校', '城市夜校'], ['社区食堂', '社区食堂'],
+    ['公共图书馆', '公共图书馆'], ['图书馆', '公共图书馆'], ['无纸化挂号', '无纸化挂号'],
+    ['旧衣回收', '旧衣回收'], ['公共自行车', '公共自行车'], ['未成年', '未成年人'], ['学生', '学生'],
+  ]) ?? canonicalText(raw.title);
+  const event = findFirst(text, [
+    ['夜校', '夜校发展'], ['报名', '报名服务'], ['延长', '服务延长'], ['夜读', '夜读服务'],
+    ['挂号', '医疗服务'], ['回收', '环保服务'], ['亲子座椅', '出行服务'], ['伤害', '伤害指控'], ['称', '指控'],
+  ]) ?? canonicalText(raw.summary ?? raw.title);
+  const published = raw.publishedAt ? new Date(raw.publishedAt) : now;
+  const timeWindow = Number.isNaN(published.getTime()) ? dateKey(now) : dateKey(published);
+  return { entity, event, timeWindow, key: `${entity}|${event}|${timeWindow}` };
+}
+
+function identifyRisks(raw: RawTopic): string[] {
+  const text = `${raw.title} ${raw.summary ?? ''} ${raw.publisher}`.toLowerCase();
+  const risks: string[] = [];
+  if (/未成年|未成年人|儿童|孩子|学生|少年/.test(text)) risks.push('minor');
+  const allegation = /称|爆料|指控|传言|涉嫌|伤害|霸凌/.test(text);
+  const supported = /官方|公告|通报|公开数据|法院|警方|调查结果/.test(text);
+  if (allegation && !supported) risks.push('unsupported-allegation');
+  return risks;
+}
+
+function scoreTopic(raw: RawTopic, lanes: TopicLane[], now: Date, risks: string[]): TopicScore {
+  const text = `${raw.title} ${raw.summary ?? ''}`.toLowerCase();
+  const published = raw.publishedAt ? new Date(raw.publishedAt) : now;
+  const ageHours = Number.isNaN(published.getTime()) ? 24 : Math.max(0, (now.getTime() - published.getTime()) / 3_600_000);
+  const evidenceAvailability = /公开数据|公告|通知|官方|试点|报名人数|流程/.test(text) ? 5 : raw.summary ? 3 : 2;
+  const matchingLanes = lanes.filter((lane) => laneMatches(lane, text)).length;
+  const relevance = ageHours <= 24 ? 5 : ageHours <= 72 ? 4 : 3;
+  const tension = /为何|火爆|突然|延长|新增|覆盖|进入|伤害|称/.test(text) ? 4 : 3;
+  const independentJudgment = risks.length > 0 ? 1 : /为何|如何|是否|火爆|新增|延长/.test(text) ? 5 : 4;
+  const laneFit = matchingLanes > 0 ? 5 : 3;
+  const visualDifficulty = /数据|流程|公告|课程|服务|试点/.test(text) ? 2 : 3;
+  const risk = risks.length === 0 ? 1 : 5;
+  const total = relevance * 0.22 + tension * 0.18 + evidenceAvailability * 0.24
+    + independentJudgment * 0.16 + laneFit * 0.12 + (5 - visualDifficulty) * 0.04 + (5 - risk) * 0.04;
+  return { relevance, tension, evidenceAvailability, independentJudgment, laneFit, visualDifficulty, risk, total };
+}
+
+function toCandidate(entries: ScoredTopic[]): TopicCandidate {
+  const best = [...entries].sort((left, right) => right.score.total - left.score.total || lexical(left.raw.title, right.raw.title))[0];
+  const risks = [...new Set(entries.flatMap((entry) => entry.risks))].sort(lexical);
+  return {
+    title: best.raw.title,
+    normalizedTopic: best.normalized.key,
+    questionHook: questionHook(best.normalized),
+    sourceUrls: [...new Set(entries.map((entry) => entry.raw.url))].sort(lexical),
+    sourcePublishers: [...new Set(entries.map((entry) => entry.raw.publisher))].sort(lexical),
+    risks,
+    eligibleForRecommendation: risks.length === 0,
+    score: best.score,
+  };
+}
+
+function questionHook(topic: NormalizedTopic): string {
+  return `${topic.entity}的${topic.event}，究竟改变了什么？`;
+}
+
+function laneMatches(lane: TopicLane, text: string): boolean {
+  const terms: Record<TopicLane, RegExp> = {
+    社会观察: /城市|社区|公共|服务|医院|图书馆|学校/,
+    生活态度: /夜校|夜读|食堂|回收|出行|亲子/,
+    思考辩论: /为何|是否|火爆|延长|新增|覆盖/,
+  };
+  return terms[lane].test(text);
+}
+
+function findFirst(text: string, values: Array<[string, string]>): string | undefined {
+  return values.find(([needle]) => text.includes(needle))?.[1];
+}
+
+function canonicalText(value: string): string {
+  return value.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '').slice(0, 24);
+}
+
+function dateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function compareCandidates(left: TopicCandidate, right: TopicCandidate): number {
+  return right.score.total - left.score.total
+    || lexical(left.normalizedTopic, right.normalizedTopic)
+    || lexical(left.title, right.title);
+}
+
+function lexical(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
