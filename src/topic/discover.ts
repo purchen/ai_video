@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { dirname } from 'node:path';
+import { z } from 'zod';
 import type { RawTopic, TopicSourceAdapter } from '../providers/contracts';
 
 export type TopicLane = '社会观察' | '生活态度' | '思考辩论';
@@ -31,8 +32,35 @@ export interface DiscoverTopicsOptions {
   lane: TopicLane[];
   now: Date;
   windowHours?: number;
-  outputPath?: string;
+  outputPath: string;
 }
+
+const topicScoreSchema = z.object({
+  relevance: z.number(),
+  tension: z.number(),
+  evidenceAvailability: z.number(),
+  independentJudgment: z.number(),
+  laneFit: z.number(),
+  visualDifficulty: z.number(),
+  risk: z.number(),
+  total: z.number(),
+});
+
+const topicCandidateSchema = z.object({
+  title: z.string(),
+  normalizedTopic: z.string(),
+  questionHook: z.string(),
+  sourceUrls: z.array(z.string().url()),
+  sourcePublishers: z.array(z.string()),
+  risks: z.array(z.string()),
+  eligibleForRecommendation: z.boolean(),
+  score: topicScoreSchema,
+});
+
+export const topicCandidatesArtifactSchema = z.object({
+  schemaVersion: z.literal(1),
+  candidates: z.array(topicCandidateSchema),
+});
 
 interface NormalizedTopic {
   entity: string;
@@ -52,8 +80,8 @@ export async function discoverTopics(
   adapters: TopicSourceAdapter[],
   options: DiscoverTopicsOptions,
 ): Promise<TopicCandidate[]> {
-  if (!Number.isInteger(options.count) || options.count < 1) {
-    throw new Error('count must be a positive integer');
+  if (!Number.isInteger(options.count) || options.count < 5 || options.count > 10) {
+    throw new Error('count must be between 5 and 10');
   }
 
   const windowHours = options.windowHours ?? 24;
@@ -75,9 +103,9 @@ export async function discoverTopics(
     .sort(compareCandidates)
     .slice(0, options.count);
 
-  const outputPath = resolve(options.outputPath ?? 'topic-candidates.json');
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, `${JSON.stringify(candidates, null, 2)}\n`, 'utf8');
+  const artifact = topicCandidatesArtifactSchema.parse({ schemaVersion: 1, candidates });
+  await mkdir(dirname(options.outputPath), { recursive: true });
+  await writeFile(options.outputPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8');
   return candidates;
 }
 
