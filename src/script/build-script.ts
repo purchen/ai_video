@@ -8,7 +8,9 @@ import {
 import { transition } from '../domain/state-machine';
 import type { LanguageModelAdapter } from '../providers/contracts';
 import type { ResearchBrief } from '../research/build-brief';
+import { readApprovedTopicSnapshot } from '../review/approve';
 import type { ProjectStore } from '../store/project-store';
+import { hashCanonicalJson } from './hash-script';
 import { assertValidScript } from './validate-script';
 
 export const sectionOrder = scriptSectionOrder;
@@ -26,6 +28,13 @@ export async function buildScript(
   if (project.manifest.workflowState !== 'TOPIC_APPROVED') {
     throw new Error('TOPIC_APPROVED is required before DRAFT_SCRIPT');
   }
+  const durableApproval = await readApprovedTopicSnapshot(project.store);
+  if (durableApproval.manifest.workflowState !== 'TOPIC_APPROVED'
+    || durableApproval.manifest.id !== project.manifest.id
+    || durableApproval.approval.projectId !== project.manifest.id
+    || hashCanonicalJson(durableApproval.manifest) !== hashCanonicalJson(project.manifest)) {
+    throw new Error('in-memory project does not match durable topic approval state');
+  }
   if (!brief.canDraftScript || brief.status !== 'RESEARCHED') {
     throw new Error('research brief is not eligible for script drafting');
   }
@@ -38,10 +47,10 @@ export async function buildScript(
   const script = scriptDocumentSchema.parse(output);
   assertValidScript(script, brief);
 
-  const draftedState = transition(project.manifest.workflowState, 'DRAFT_SCRIPT');
+  const draftedState = transition(durableApproval.manifest.workflowState, 'DRAFT_SCRIPT');
   const reviewState = transition(draftedState, 'REQUEST_SCRIPT_REVIEW');
   const manifest = projectManifestSchema.parse({
-    ...project.manifest,
+    ...durableApproval.manifest,
     workflowState: reviewState,
     script,
     updatedAt: script.updatedAt,

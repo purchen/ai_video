@@ -5,9 +5,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { scriptDocumentSchema, type ProjectManifest } from '../../src/domain/schemas';
 import type { LanguageModelAdapter } from '../../src/providers/contracts';
 import type { ResearchBrief } from '../../src/research/build-brief';
+import { approveTopic, type ReviewProject } from '../../src/review/approve';
 import { buildScript, sectionOrder } from '../../src/script/build-script';
 import { validateScript } from '../../src/script/validate-script';
 import { ProjectStore } from '../../src/store/project-store';
+import type { TopicCandidate } from '../../src/topic/discover';
 
 const createdAt = '2026-09-01T00:00:00.000Z';
 const temporaryDirectories: string[] = [];
@@ -36,6 +38,17 @@ const brief: ResearchBrief = {
   explanationNotes: [],
   canDraftScript: true,
   status: 'RESEARCHED',
+};
+
+const candidate: TopicCandidate = {
+  title: brief.topic.title,
+  normalizedTopic: brief.topic.normalizedTopic,
+  questionHook: brief.topic.questionHook,
+  sourceUrls: ['https://example.com/official'],
+  sourcePublishers: ['Example'],
+  risks: [],
+  eligibleForRecommendation: true,
+  score: { relevance: 5, tension: 4, evidenceAvailability: 5, independentJudgment: 5, laneFit: 5, visualDifficulty: 2, risk: 1, total: 4.5 },
 };
 
 const validScript = {
@@ -86,6 +99,17 @@ async function scriptProject(state: ProjectManifest['workflowState']) {
       }],
     },
   };
+}
+
+async function durablyApprovedProject(): Promise<ReviewProject> {
+  const project = await scriptProject('TOPIC_REVIEW_REQUIRED');
+  const reviewProject: ReviewProject = {
+    ...project,
+    candidates: [{ id: 'candidate-001', candidate }],
+    brief,
+  };
+  await approveTopic(reviewProject, 'candidate-001', 'editor');
+  return reviewProject;
 }
 
 describe('validateScript', () => {
@@ -178,6 +202,23 @@ describe('buildScript', () => {
     await expect(access(join(project.store.root, 'project.json'))).rejects.toThrow();
   });
 
+  it('rejects a forged in-memory approved state when no durable topic approval exists', async () => {
+    let calls = 0;
+    const adapter: LanguageModelAdapter = {
+      id: 'deterministic-fake',
+      async generate() {
+        calls += 1;
+        return validScript;
+      },
+    };
+    const project = await scriptProject('TOPIC_APPROVED');
+
+    await expect(buildScript(project, brief, adapter)).rejects.toThrow('topic approval is not committed');
+
+    expect(calls).toBe(0);
+    await expect(access(join(project.store.root, 'script-draft.json'))).rejects.toThrow();
+  });
+
   it('requests structured JSON, persists the draft, and advances to script review', async () => {
     const requests: unknown[] = [];
     const adapter: LanguageModelAdapter = {
@@ -187,7 +228,7 @@ describe('buildScript', () => {
         return validScript;
       },
     };
-    const project = await scriptProject('TOPIC_APPROVED');
+    const project = await durablyApprovedProject();
 
     const script = await buildScript(project, brief, adapter);
 
@@ -209,7 +250,7 @@ describe('buildScript', () => {
         return { ...validScript, estimatedDurationMs: 30_000 };
       },
     };
-    const project = await scriptProject('TOPIC_APPROVED');
+    const project = await durablyApprovedProject();
 
     await expect(buildScript(project, brief, adapter)).rejects.toThrow(
       'estimated duration must be between 60000 and 120000 ms',

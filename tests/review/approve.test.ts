@@ -1,8 +1,8 @@
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import type { ProjectManifest } from '../../src/domain/schemas';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { projectManifestSchema, type ProjectManifest } from '../../src/domain/schemas';
 import {
   approveScript,
   approveTopic,
@@ -22,6 +22,7 @@ const now = '2026-09-01T00:00:00.000Z';
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
@@ -166,6 +167,33 @@ describe('human approval gates', () => {
     expect(project.manifest.workflowState).toBe('TOPIC_REVIEW_REQUIRED');
   });
 
+  it('binds topic approval to the canonical approval-time project snapshot', async () => {
+    const project = await reviewProject('TOPIC_REVIEW_REQUIRED');
+    await approveTopic(project, 'candidate-001', 'editor');
+    const changed = projectManifestSchema.parse({
+      ...project.manifest,
+      updatedAt: '2026-09-02T00:00:00.000Z',
+    });
+    await project.store.writeJson('project.json', projectManifestSchema, changed);
+
+    await expect(readApprovedTopic(project.store)).rejects.toThrow(
+      'topic approval commit does not match artifact and project state',
+    );
+  });
+
+  it('keeps durable topic approval valid through explicit script successor states', async () => {
+    const project = await reviewProject('TOPIC_REVIEW_REQUIRED');
+    const approval = await approveTopic(project, 'candidate-001', 'editor');
+    const successor = projectManifestSchema.parse({
+      ...project.manifest,
+      workflowState: 'SCRIPT_REVIEW_REQUIRED',
+      updatedAt: '2026-09-02T00:00:00.000Z',
+    });
+    await project.store.writeJson('project.json', projectManifestSchema, successor);
+
+    expect(await readApprovedTopic(project.store)).toEqual(approval);
+  });
+
   it('cannot approve a script until script review is pending', async () => {
     const project = await reviewProject('SCRIPT_DRAFTED');
 
@@ -202,6 +230,16 @@ describe('human approval gates', () => {
     await expect(access(join(project.store.root, 'approved-script.json'))).rejects.toThrow();
   });
 
+  it('rejects script approval when the script belongs to another project', async () => {
+    const project = await reviewProject('SCRIPT_REVIEW_REQUIRED');
+    project.draft = { ...script, projectId: 'another-project' };
+
+    await expect(approveScript(project, 'editor')).rejects.toThrow(
+      'script projectId must match project manifest id',
+    );
+    await expect(access(join(project.store.root, 'approved-script.json'))).rejects.toThrow();
+  });
+
   it('rejects a half-committed script approval when the project write fails', async () => {
     const project = await reviewProject('SCRIPT_REVIEW_REQUIRED');
     failWrite(project, 2);
@@ -229,6 +267,59 @@ describe('human approval gates', () => {
     expect(() => approvedScriptSchema.parse(tampered)).toThrow('approved script hash does not match script content');
     await expect(readApprovedScript(project.store)).rejects.toThrow(
       'approved script hash does not match script content',
+    );
+  });
+
+  it('rejects a readable approved script whose projectId differs from the manifest', async () => {
+    const project = await reviewProject('SCRIPT_REVIEW_REQUIRED');
+    const approved = await approveScript(project, 'editor');
+    const wrongProjectScript = { ...approved.script, projectId: 'another-project' };
+    const tampered = {
+      ...approved,
+      script: wrongProjectScript,
+      scriptHash: hashScript(wrongProjectScript),
+    };
+    await writeFile(
+      join(project.store.root, 'approved-script.json'),
+      `${JSON.stringify(tampered, null, 2)}\n`,
+      'utf8',
+    );
+
+    await expect(readApprovedScript(project.store)).rejects.toThrow(
+      'approved script projectId does not match project manifest id',
+    );
+  });
+
+  it('keeps durable script approval valid through explicit production successor states', async () => {
+    const project = await reviewProject('SCRIPT_REVIEW_REQUIRED');
+    const approved = await approveScript(project, 'editor');
+    const successor = projectManifestSchema.parse({
+      ...project.manifest,
+      workflowState: 'VOICE_READY',
+      updatedAt: '2026-09-02T00:00:00.000Z',
+    });
+    await project.store.writeJson('project.json', projectManifestSchema, successor);
+
+    expect(await readApprovedScript(project.store)).toEqual(approved);
+  });
+
+  it('does not accept an old marker when the new marker write fails', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(now));
+    const project = await reviewProject('SCRIPT_REVIEW_REQUIRED');
+    await approveScript(project, 'editor');
+    const reset = projectManifestSchema.parse({
+      ...project.manifest,
+      workflowState: 'SCRIPT_REVIEW_REQUIRED',
+      updatedAt: now,
+    });
+    await project.store.writeJson('project.json', projectManifestSchema, reset);
+    project.manifest = reset;
+    failWrite(project, 3);
+
+    await expect(approveScript(project, 'editor')).rejects.toThrow('injected write failure');
+    await expect(readApprovedScript(project.store)).rejects.toThrow(
+      'script approval commit does not match artifact and project state',
     );
   });
 });
