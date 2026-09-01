@@ -37,15 +37,15 @@ export class ProviderRegistry implements ProviderCapabilities {
     return new ProviderRegistry([...adapters]);
   }
 
-  selectTts(_request: TtsRequest): TtsAdapter | ManualTtsAdapter {
-    const adapter = this.ttsAdapters[0];
+  selectTts(request: TtsRequest): TtsAdapter | ManualTtsAdapter {
+    const adapter = this.ttsAdapters.find((candidate) => candidate.supports(request));
     if (!adapter) throw new Error('No TTS capability is registered');
     return adapter;
   }
 
   async selectAvailableTts(request: TtsRequest): Promise<TtsAdapter | ManualTtsAdapter> {
     for (const adapter of this.ttsAdapters) {
-      if (await adapter.available()) return adapter;
+      if (adapter.supports(request) && await adapter.available()) return adapter;
     }
     throw new Error(`No TTS capability is available for script ${request.approvedScriptHash}`);
   }

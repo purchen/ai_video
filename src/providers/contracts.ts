@@ -11,6 +11,10 @@ export interface TtsRequest {
   approvedScriptHash: string;
   text: string;
   voiceId: string;
+  voiceKind: 'synthetic' | 'cloned' | 'similar-real-person';
+  authorization: 'synthetic' | 'user-authorized';
+  authorizationReference: string;
+  authorizationHash: string;
   outputPath: string;
 }
 
@@ -20,7 +24,10 @@ export interface TtsResult {
   providerId: string;
   model: string;
   voiceId: string;
+  voiceKind: 'synthetic' | 'cloned' | 'similar-real-person';
   authorization: 'synthetic' | 'user-authorized';
+  authorizationReference: string;
+  authorizationHash: string;
   cost: CostEstimate;
   wordTimings?: Array<{ word: string; startMs: number; endMs: number }>;
 }
@@ -28,6 +35,7 @@ export interface TtsResult {
 export interface TtsAdapter {
   readonly id: string;
   readonly mode: 'direct' | 'manual';
+  supports(request: TtsRequest): boolean;
   available(): Promise<boolean>;
   estimate(request: TtsRequest): Promise<CostEstimate>;
   synthesize(request: TtsRequest): Promise<TtsResult>;

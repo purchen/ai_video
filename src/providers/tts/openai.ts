@@ -25,6 +25,10 @@ export class OpenAiTtsAdapter implements TtsAdapter {
     this.costCnyPerThousandCharacters = options.costCnyPerThousandCharacters ?? 0.108;
   }
 
+  supports(request: TtsRequest): boolean {
+    return request.voiceKind === 'synthetic' && request.authorization === 'synthetic';
+  }
+
   async available(): Promise<boolean> {
     return this.apiKey !== undefined;
   }
@@ -56,14 +60,21 @@ export class OpenAiTtsAdapter implements TtsAdapter {
     });
     if (!response.ok) throw new Error(`OpenAI TTS request failed with status ${response.status}`);
     await writeFile(request.outputPath, Buffer.from(await response.arrayBuffer()));
+    const calculatedCost = await this.estimate(request);
     return {
       audioPath: request.outputPath,
       durationMs: 0,
       providerId: this.id,
       model: this.model,
       voiceId: request.voiceId,
+      voiceKind: request.voiceKind,
       authorization: 'synthetic',
-      cost: await this.estimate(request),
+      authorizationReference: request.authorizationReference,
+      authorizationHash: request.authorizationHash,
+      cost: {
+        ...calculatedCost,
+        basis: `configured calculation; not provider-reported invoice; ${calculatedCost.basis}`,
+      },
     };
   }
 }

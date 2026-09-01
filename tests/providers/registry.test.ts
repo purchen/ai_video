@@ -21,6 +21,10 @@ describe('ProviderRegistry', () => {
       approvedScriptHash: 'a'.repeat(64),
       text: 'Test narration',
       voiceId: 'alloy',
+      voiceKind: 'synthetic',
+      authorization: 'synthetic',
+      authorizationReference: 'synthetic:voice:alloy',
+      authorizationHash: 'b'.repeat(64),
       outputPath: 'voice/master.wav',
     }).id).toBe('openai-tts');
   });
@@ -32,6 +36,10 @@ describe('ProviderRegistry', () => {
       approvedScriptHash: 'a'.repeat(64),
       text: 'Test narration',
       voiceId: 'alloy',
+      voiceKind: 'synthetic',
+      authorization: 'synthetic',
+      authorizationReference: 'synthetic:voice:alloy',
+      authorizationHash: 'b'.repeat(64),
       outputPath: 'voice/master.wav',
     }).id).toBe('jianying-manual');
   });

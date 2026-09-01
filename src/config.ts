@@ -15,6 +15,13 @@ export interface BudgetGuardOptions {
   dryRun: boolean;
 }
 
+export interface BudgetAuthorization {
+  providerId: string;
+  currency: 'CNY';
+  maximumAmountCny: number;
+  remainingAtAuthorizationCny: number;
+}
+
 export class BudgetGuard {
   private actualSpentCny: number;
 
@@ -35,6 +42,24 @@ export class BudgetGuard {
     throw new Error(
       `Paid call requires approval: estimated ${formatCny(estimate.amount)} CNY, remaining ${formatCny(Math.max(0, remaining))} CNY`,
     );
+  }
+
+  authorize(estimate: CostEstimate): BudgetAuthorization {
+    this.assertAllowed(estimate);
+    return {
+      providerId: estimate.providerId,
+      currency: 'CNY',
+      maximumAmountCny: estimate.amount,
+      remainingAtAuthorizationCny: Math.max(0, (this.options.limitCny ?? 0) - this.actualSpentCny),
+    };
+  }
+
+  settleAuthorized(authorization: BudgetAuthorization, actual: CostEstimate): boolean {
+    this.actualSpentCny += actual.amount;
+    return actual.providerId === authorization.providerId
+      && actual.currency === authorization.currency
+      && actual.amount <= authorization.maximumAmountCny
+      && actual.amount <= authorization.remainingAtAuthorizationCny;
   }
 
   recordActual(cost: CostEstimate): void {

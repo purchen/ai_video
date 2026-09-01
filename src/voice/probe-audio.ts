@@ -6,6 +6,8 @@ export const audioMetadataSchema = z.object({
   durationMs: z.number().int().positive(),
   sampleRateHz: z.number().int().positive(),
   channels: z.number().int().positive(),
+  formatName: z.string().min(1),
+  codecName: z.string().min(1),
   integratedLufs: z.number().finite().nullable(),
 });
 
@@ -31,18 +33,24 @@ export function createFfprobeAudioProbe(executablePath: string, execFile: ExecFi
       const { stdout } = await execFile(executablePath, [
         '-v', 'error',
         '-select_streams', 'a:0',
-        '-show_entries', 'stream=sample_rate,channels:format=duration',
+        '-show_entries', 'stream=sample_rate,channels,codec_name:format=duration,format_name',
         '-of', 'json',
         audioPath,
       ]);
       const parsed = z.object({
-        streams: z.array(z.object({ sample_rate: z.coerce.number(), channels: z.coerce.number() })).min(1),
-        format: z.object({ duration: z.coerce.number() }),
+        streams: z.array(z.object({
+          sample_rate: z.coerce.number(),
+          channels: z.coerce.number(),
+          codec_name: z.string().min(1),
+        })).min(1),
+        format: z.object({ duration: z.coerce.number(), format_name: z.string().min(1) }),
       }).parse(JSON.parse(stdout));
       return audioMetadataSchema.parse({
         durationMs: Math.round(parsed.format.duration * 1000),
         sampleRateHz: parsed.streams[0].sample_rate,
         channels: parsed.streams[0].channels,
+        formatName: parsed.format.format_name,
+        codecName: parsed.streams[0].codec_name,
         integratedLufs: null,
       });
     },
