@@ -1,8 +1,10 @@
 import { hasConfiguredValue, type ProviderConfig } from '../config';
-import type { CostEstimate, ManualTtsAdapter, TtsAdapter, TtsRequest, TtsResult } from './contracts';
+import type { ManualTtsAdapter, TtsAdapter, TtsRequest } from './contracts';
+import { JianyingManualTtsAdapter } from './tts/manual';
+import { OpenAiTtsAdapter, type FetchLike } from './tts/openai';
 
 export interface TtsCapability {
-  id: 'openai-tts' | 'jianying-manual';
+  id: string;
   mode: 'direct' | 'manual';
 }
 
@@ -12,53 +14,39 @@ export interface ProviderCapabilities {
 
 export class ProviderRegistry implements ProviderCapabilities {
   readonly tts: readonly TtsCapability[];
+  private readonly ttsAdapters: readonly (TtsAdapter | ManualTtsAdapter)[];
 
-  private constructor(tts: readonly TtsCapability[]) {
-    this.tts = tts;
+  private constructor(ttsAdapters: readonly (TtsAdapter | ManualTtsAdapter)[]) {
+    this.ttsAdapters = ttsAdapters;
+    this.tts = ttsAdapters.map((adapter) => ({
+      id: adapter.id,
+      mode: adapter.mode,
+    }));
   }
 
-  static detect(config: ProviderConfig): ProviderRegistry {
-    const tts: TtsCapability[] = [];
+  static detect(config: ProviderConfig, dependencies: { fetch?: FetchLike } = {}): ProviderRegistry {
+    const adapters: Array<TtsAdapter | ManualTtsAdapter> = [];
     if (hasConfiguredValue(config.OPENAI_API_KEY)) {
-      tts.push({ id: 'openai-tts', mode: 'direct' });
+      adapters.push(new OpenAiTtsAdapter({ apiKey: config.OPENAI_API_KEY, fetch: dependencies.fetch }));
     }
-    tts.push({ id: 'jianying-manual', mode: 'manual' });
-    return new ProviderRegistry(tts);
+    adapters.push(new JianyingManualTtsAdapter());
+    return new ProviderRegistry(adapters);
+  }
+
+  static fromTtsAdapters(adapters: readonly (TtsAdapter | ManualTtsAdapter)[]): ProviderRegistry {
+    return new ProviderRegistry([...adapters]);
   }
 
   selectTts(_request: TtsRequest): TtsAdapter | ManualTtsAdapter {
-    return this.tts[0]?.id === 'openai-tts' ? new OpenAiTtsCapability() : new JianyingManualCapability();
-  }
-}
-
-class OpenAiTtsCapability implements TtsAdapter {
-  readonly id = 'openai-tts';
-
-  async available(): Promise<boolean> {
-    return true;
+    const adapter = this.ttsAdapters[0];
+    if (!adapter) throw new Error('No TTS capability is registered');
+    return adapter;
   }
 
-  async estimate(_request: TtsRequest): Promise<CostEstimate> {
-    throw new Error('OpenAI TTS is not implemented');
-  }
-
-  async synthesize(_request: TtsRequest): Promise<TtsResult> {
-    throw new Error('OpenAI TTS is not implemented');
-  }
-}
-
-class JianyingManualCapability implements ManualTtsAdapter {
-  readonly id = 'jianying-manual' as const;
-
-  async available(): Promise<boolean> {
-    return true;
-  }
-
-  async estimate(_request: TtsRequest): Promise<CostEstimate> {
-    return { providerId: this.id, currency: 'CNY', amount: 0, basis: 'manual import' };
-  }
-
-  async synthesize(_request: TtsRequest): Promise<TtsResult> {
-    throw new Error('Manual Jianying TTS requires an imported audio file');
+  async selectAvailableTts(request: TtsRequest): Promise<TtsAdapter | ManualTtsAdapter> {
+    for (const adapter of this.ttsAdapters) {
+      if (await adapter.available()) return adapter;
+    }
+    throw new Error(`No TTS capability is available for script ${request.approvedScriptHash}`);
   }
 }

@@ -22,10 +22,12 @@ export interface TtsResult {
   voiceId: string;
   authorization: 'synthetic' | 'user-authorized';
   cost: CostEstimate;
+  wordTimings?: Array<{ word: string; startMs: number; endMs: number }>;
 }
 
 export interface TtsAdapter {
   readonly id: string;
+  readonly mode: 'direct' | 'manual';
   available(): Promise<boolean>;
   estimate(request: TtsRequest): Promise<CostEstimate>;
   synthesize(request: TtsRequest): Promise<TtsResult>;
@@ -33,6 +35,7 @@ export interface TtsAdapter {
 
 export interface ManualTtsAdapter extends TtsAdapter {
   readonly id: 'jianying-manual';
+  readonly mode: 'manual';
 }
 
 export interface RawTopic {

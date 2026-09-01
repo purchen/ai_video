@@ -16,7 +16,11 @@ export interface BudgetGuardOptions {
 }
 
 export class BudgetGuard {
-  constructor(private readonly options: BudgetGuardOptions) {}
+  private actualSpentCny: number;
+
+  constructor(private readonly options: BudgetGuardOptions) {
+    this.actualSpentCny = options.spentCny;
+  }
 
   assertAllowed(estimate: CostEstimate): void {
     if (!Number.isFinite(estimate.amount) || estimate.amount < 0) {
@@ -25,12 +29,23 @@ export class BudgetGuard {
 
     if (this.options.dryRun || estimate.amount === 0) return;
 
-    const remaining = (this.options.limitCny ?? 0) - this.options.spentCny;
+    const remaining = (this.options.limitCny ?? 0) - this.actualSpentCny;
     if (remaining >= estimate.amount) return;
 
     throw new Error(
       `Paid call requires approval: estimated ${formatCny(estimate.amount)} CNY, remaining ${formatCny(Math.max(0, remaining))} CNY`,
     );
+  }
+
+  recordActual(cost: CostEstimate): void {
+    if (!Number.isFinite(cost.amount) || cost.amount < 0 || cost.currency !== 'CNY') {
+      throw new Error('Actual cost amount must be a finite, non-negative CNY value');
+    }
+    this.actualSpentCny += cost.amount;
+  }
+
+  spentCny(): number {
+    return this.actualSpentCny;
   }
 }
 
