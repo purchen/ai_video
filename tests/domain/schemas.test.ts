@@ -36,7 +36,12 @@ function projectWithFact(
       id: 'script-001',
       projectId: 'topic-001',
       title: 'Script',
+      sections: ([
+        'question-hook', 'fact-baseline', 'strong-evidence', 'mechanism',
+        'counter-evidence', 'judgment', 'closing-question',
+      ] as const).map((type) => ({ type, sentenceIds: ['sentence-001'], lenses: [] })),
       sentences: [{ id: 'sentence-001', text: 'A factual claim.', type: 'fact', sourceIds }],
+      estimatedDurationMs: 90_000,
       createdAt: capturedAt,
       updatedAt: capturedAt,
     },

@@ -52,3 +52,15 @@ export interface ResearchInput {
   sources: SourceRecord[];
   script?: ScriptDocument;
 }
+
+export interface LanguageModelRequest {
+  prompt: string;
+  responseFormat: 'json';
+  schemaName: 'ScriptDocument';
+}
+
+/** Network-agnostic boundary for deterministic or remote structured-output models. */
+export interface LanguageModelAdapter {
+  readonly id: string;
+  generate(request: LanguageModelRequest): Promise<unknown>;
+}

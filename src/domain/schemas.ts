@@ -28,6 +28,7 @@ export const scriptSentenceSchema = z.object({
   text: z.string().min(1),
   type: z.enum(['hook', 'fact', 'opinion', 'transition', 'call-to-action']),
   sourceIds: z.array(z.string().min(1)),
+  attribution: z.string().min(1).optional(),
 }).superRefine((sentence, context) => {
   if (sentence.type === 'fact' && sentence.sourceIds.length === 0) {
     context.addIssue({
@@ -40,14 +41,43 @@ export const scriptSentenceSchema = z.object({
 
 export type ScriptSentence = z.infer<typeof scriptSentenceSchema>;
 
+export const scriptSectionOrder = [
+  'question-hook',
+  'fact-baseline',
+  'strong-evidence',
+  'mechanism',
+  'counter-evidence',
+  'judgment',
+  'closing-question',
+] as const;
+
+export const scriptSectionTypeSchema = z.enum(scriptSectionOrder);
+
+export const scriptSectionSchema = z.object({
+  type: scriptSectionTypeSchema,
+  sentenceIds: z.array(z.string().min(1)).min(1),
+  lenses: z.array(z.string().min(1)),
+});
+
 export const scriptDocumentSchema = z.object({
   schemaVersion: z.literal(1),
   id: z.string().min(1),
   projectId: z.string().min(1),
   title: z.string().min(1),
+  sections: z.array(scriptSectionSchema),
   sentences: z.array(scriptSentenceSchema),
+  estimatedDurationMs: z.number().int().nonnegative(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+}).superRefine((script, context) => {
+  if (script.sections.length !== scriptSectionOrder.length
+    || script.sections.some((section, index) => section.type !== scriptSectionOrder[index])) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'script sections must follow the required seven-section order',
+      path: ['sections'],
+    });
+  }
 });
 
 export type ScriptDocument = z.infer<typeof scriptDocumentSchema>;
