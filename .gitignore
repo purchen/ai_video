@@ -1,0 +1,16 @@
+# Local brainstorming preview state
+.superpowers/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# JavaScript build and test output
+node_modules/
+dist/
+coverage/
+
+# Generated video projects and partial renders
+projects/
+*.partial.mp4
