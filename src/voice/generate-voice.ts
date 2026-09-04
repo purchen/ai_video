@@ -103,6 +103,7 @@ async function generateVoiceExclusively(request: GenerateVoiceRequest): Promise<
     throw new Error('voice request does not match approved script hash');
   }
   const attemptId = transactionIdSchema.parse(request.attemptId);
+  const idempotencyKey = `voice:${approvedScript.script.projectId}:${approvedScript.scriptHash}:${attemptId}`;
   const io = request.artifactIo ?? nodeVoiceArtifactIo;
   const existing = await tryReadAttemptAudit(request.store, attemptId, io);
   if (!existing) await assertVoiceAttemptUnused(request.store, attemptId, io);
@@ -126,6 +127,12 @@ async function generateVoiceExclusively(request: GenerateVoiceRequest): Promise<
     if (existing.attempt.status !== 'RESERVED') {
       throw new Error('voice attempt requires manual recovery before another paid call');
     }
+    // Historical paid identities must never be silently rebound to a canonical retry.
+    if (existing.attempt.attemptId !== attemptId
+      || existing.attempt.transactionId !== attemptId
+      || existing.attempt.idempotencyKey !== idempotencyKey) {
+      throw new Error('voice attempt identity requires manual recovery before another paid call');
+    }
   }
 
   const voice = validateVoiceSelection(request.voice ?? { voiceId: 'alloy', kind: 'synthetic' });
@@ -134,7 +141,6 @@ async function generateVoiceExclusively(request: GenerateVoiceRequest): Promise<
   const transactionId = attemptId;
   const transactionDirectory = voicePath(request.store, 'transactions', transactionId);
   const temporaryAudio = join(transactionDirectory, 'master.tmp.wav');
-  const idempotencyKey = `voice:${approvedScript.script.projectId}:${approvedScript.scriptHash}:${attemptId}`;
   const ttsRequest: TtsRequest = {
     idempotencyKey,
     approvedScriptHash: approvedScript.scriptHash,

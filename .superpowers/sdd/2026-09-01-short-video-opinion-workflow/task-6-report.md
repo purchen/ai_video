@@ -276,3 +276,34 @@ Windows resolves upper/lowercase UUID paths to the same directory, but the proce
 - `git diff --check`: exit `0`; informational Windows LF-to-CRLF warnings only.
 
 No live or paid calls, new dependencies, or subagents were used. The process-local lock remains intentionally limited to one process; Task 9 cross-process locking and Task 8 managed audio binaries remain outside this fix scope.
+
+---
+
+## Independent review fix round 5
+
+Commit subject: `fix: reject incompatible legacy voice reservations` (based on `862f197`).
+
+### Scope and root cause
+
+A lowercase caller on Windows could read a historical uppercase `RESERVED` audit and reservation. Although the stored bundle was internally consistent, generation kept the old attempt identity while deriving a new lowercase reservation and provider idempotency key. A schema-valid legacy key prefix for the same ID, or an incompatible stored transaction ID, could likewise be silently rebound.
+
+The retry branch now requires the persisted attempt ID, transaction ID, and exact idempotency key to match the canonical caller binding. It rejects incompatible `RESERVED` attempts with an explicit manual-recovery error before registry/provider selection, estimates, budget reservations, or filesystem mutation. Existing bundle validation already requires the reservation identity/key to match the attempt. No stored identities or keys are migrated or rewritten.
+
+Persisted-result recovery stays before this guard and continues to use the original historical marker and paid identity. Matching canonical `RESERVED` attempts still resume normally.
+
+### Round-5 RED/GREEN evidence
+
+Command: `npm test -- tests/voice/generate-voice.test.ts -t 'incompatible RESERVED|canonical RESERVED|legacy uppercase persisted result'`.
+
+- RED before production edits: exit `1`; 3 failed / 3 passed / 44 skipped. All three incompatible `RESERVED` cases returned `READY` instead of rejecting. The Windows regression uses a real uppercase audit directory with matching uppercase reservation and provider key, invoked through its lowercase alias.
+- GREEN after the minimal guard: exit `0`; 6 passed / 44 skipped. Rejection cases assert zero provider/estimate/synthesis calls, zero budget reservations, zero mkdir/write/rename/remove operations, unchanged budget state, and byte-identical retained audit files and directory names.
+- Positive cases cover a matching canonical `RESERVED` retry and complete historical uppercase results with both `RESERVED` and `RECOVERABLE` status. Recovery makes no new provider/estimate/reservation call, retains the exact original reservation/settlement/charge/result bytes and uppercase identity/key, and exposes the verified committed audio.
+
+### Final verification
+
+- `npm test -- tests/voice tests/providers/budget.test.ts`: exit `0`; 4 files / 97 tests passed.
+- `npm test`: exit `0`; 13 files / 160 tests passed (full suite run once).
+- `npm run typecheck`: exit `0`.
+- `git diff --check`: exit `0`; informational Windows LF-to-CRLF warnings only.
+
+No live or paid calls, new dependencies, migrations, or subagents were used. Incompatible historical reservations intentionally require manual recovery; no new blocking concern remains in this scoped round. Task 9 cross-process locking and Task 8 managed audio binaries remain outside scope.

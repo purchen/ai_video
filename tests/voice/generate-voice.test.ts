@@ -1,8 +1,8 @@
-import { access, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtemp } from 'node:fs/promises';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BudgetGuard } from '../../src/config';
 import type { TtsAdapter, TtsRequest, TtsResult } from '../../src/providers/contracts';
 import { ProviderRegistry } from '../../src/providers/registry';
@@ -12,6 +12,7 @@ import { scriptNarrationText } from '../../src/script/narration';
 import { ProjectStore } from '../../src/store/project-store';
 import {
   nodeVoiceArtifactIo,
+  sha256Bytes,
   type VoiceArtifactIo,
 } from '../../src/voice/artifacts';
 import type { AudioProbe } from '../../src/voice/probe-audio';
@@ -197,6 +198,120 @@ describe('generateVoice durable and provider boundaries', () => {
 });
 
 describe('generateVoice settlement and publication transaction', () => {
+  for (const { label, uppercase, legacyKey, transactionAlias } of [
+    { label: 'legacy uppercase Windows identity', uppercase: true, legacyKey: false, transactionAlias: false },
+    { label: 'different key for the same ID', uppercase: false, legacyKey: true, transactionAlias: false },
+    { label: 'different transaction identity', uppercase: false, legacyKey: false, transactionAlias: true },
+  ]) {
+    it.skipIf(uppercase && process.platform !== 'win32')(`rejects incompatible RESERVED ${label} before side effects`, async () => {
+      const context = await voiceContext();
+      const attemptId = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+      const persistedId = uppercase ? attemptId.toUpperCase() : attemptId;
+      const idempotencyKey = `${legacyKey ? 'legacy-voice' : 'voice'}:topic-001:${context.approvedScript.scriptHash}:${persistedId}`;
+      const directory = await persistReservedAttempt(context, persistedId, idempotencyKey,
+        transactionAlias ? attemptId.toUpperCase() : persistedId);
+      const names = (await readdir(directory)).sort();
+      const bytes = await Promise.all(names.map((name) => readFile(join(directory, name))));
+      const original = await readVoiceAttemptAudit(context.store, attemptId);
+      expect(original.attempt.status).toBe('RESERVED');
+      expect(original.result).toBeUndefined();
+      const provider = directProvider();
+      const reserve = vi.spyOn(context.budgetGuard, 'reserve');
+      const io = {
+        ...nodeVoiceArtifactIo,
+        mkdir: vi.fn(nodeVoiceArtifactIo.mkdir),
+        writeFile: vi.fn(nodeVoiceArtifactIo.writeFile),
+        rename: vi.fn(nodeVoiceArtifactIo.rename),
+        rm: vi.fn(nodeVoiceArtifactIo.rm),
+      };
+
+      await expect(generateVoice({ ...context, attemptId,
+        registry: ProviderRegistry.fromTtsAdapters([provider.adapter]), artifactIo: io }))
+        .rejects.toThrow('voice attempt identity requires manual recovery before another paid call');
+
+      expect(provider.calls).toEqual([]);
+      expect(reserve).not.toHaveBeenCalled();
+      for (const operation of [io.mkdir, io.writeFile, io.rename, io.rm]) expect(operation).not.toHaveBeenCalled();
+      expect(context.budgetGuard.reservedCny()).toBe(0.5);
+      expect(context.budgetGuard.spentCny()).toBe(0);
+      expect((await readdir(directory)).sort()).toEqual(names);
+      expect(await Promise.all(names.map((name) => readFile(join(directory, name))))).toEqual(bytes);
+      expect(await readdir(join(context.store.root, 'voice', 'audit'))).toEqual([persistedId]);
+      expect(await transactionDirectories(context.store)).toEqual([]);
+    });
+  }
+
+  it('retries a matching canonical RESERVED attempt with its original key', async () => {
+    const context = await voiceContext();
+    const attemptId = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+    const idempotencyKey = `voice:topic-001:${context.approvedScript.scriptHash}:${attemptId}`;
+    await persistReservedAttempt(context, attemptId, idempotencyKey);
+    const provider = directProvider();
+
+    await expect(generateVoice({ ...context, attemptId,
+      registry: ProviderRegistry.fromTtsAdapters([provider.adapter]) })).resolves.toMatchObject({ status: 'READY' });
+
+    expect(provider.calls).toEqual(['supports', 'available', 'estimate', 'synthesize']);
+    expect(provider.requests.every((request) => request.idempotencyKey === idempotencyKey)).toBe(true);
+    expect(context.budgetGuard.reservedCny()).toBe(0);
+    expect(context.budgetGuard.spentCny()).toBe(0.45);
+    expect((await readVoiceAttemptAudit(context.store, attemptId)).attempt.status).toBe('COMMITTED');
+  });
+
+  it.skipIf(process.platform !== 'win32').each(['RESERVED', 'RECOVERABLE'] as const)(
+    'recovers a legacy uppercase persisted result with %s status without changing its paid identity', async (status) => {
+      const context = await voiceContext();
+      const attemptId = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+      const legacyId = attemptId.toUpperCase();
+      const provider = directProvider();
+      await expect(generateVoice({ ...context, attemptId,
+        registry: ProviderRegistry.fromTtsAdapters([provider.adapter]), artifactIo: failingIo('marker') }))
+        .rejects.toThrow('injected marker failure');
+      // Reconstruct a complete pre-canonicalization result, including its original hashes and key.
+      for (const namespace of ['audit', 'transactions']) {
+        const directory = join(context.store.root, 'voice', namespace, attemptId);
+        for (const name of await readdir(directory)) {
+          if (!name.endsWith('.json')) continue;
+          const path = join(directory, name);
+          await writeFile(path, (await readFile(path, 'utf8')).replaceAll(attemptId, legacyId));
+        }
+        await rename(directory, join(context.store.root, 'voice', namespace, legacyId));
+      }
+      const auditDirectory = join(context.store.root, 'voice', 'audit', legacyId);
+      const transactionDirectory = join(context.store.root, 'voice', 'transactions', legacyId);
+      const resultPath = join(auditDirectory, 'result.json');
+      const result = JSON.parse(await readFile(resultPath, 'utf8'));
+      for (const [field, file] of [['timingsHash', 'word-timings.json'], ['reportHash', 'voice-report.json'], ['chargeHash', 'charge.json']]) {
+        result.marker[field] = sha256Bytes(await readFile(join(transactionDirectory, file)));
+      }
+      await writeFile(resultPath, JSON.stringify(result));
+      const attemptPath = join(auditDirectory, 'attempt.json');
+      const attempt = JSON.parse(await readFile(attemptPath, 'utf8'));
+      await writeFile(attemptPath, JSON.stringify({ ...attempt, status }));
+      const before = await readVoiceAttemptAudit(context.store, attemptId);
+      expect(before.result).toBeDefined();
+      const files = ['reservation.json', 'settlement.json', 'charge.json', 'result.json'];
+      const bytes = await Promise.all(files.map((name) => readFile(join(auditDirectory, name))));
+      const retryProvider = directProvider();
+      const reserve = vi.spyOn(context.budgetGuard, 'reserve');
+
+      await expect(generateVoice({ ...context, attemptId,
+        registry: ProviderRegistry.fromTtsAdapters([retryProvider.adapter]) }))
+        .resolves.toMatchObject({ status: 'READY', report: { transactionId: legacyId } });
+
+      expect(retryProvider.calls).toEqual([]);
+      expect(reserve).not.toHaveBeenCalled();
+      expect(await Promise.all(files.map((name) => readFile(join(auditDirectory, name))))).toEqual(bytes);
+      const after = await readVoiceAttemptAudit(context.store, attemptId);
+      expect(after.attempt).toEqual({ ...before.attempt, status: 'COMMITTED' });
+      const committed = await readCommittedVoice(context.store, context.probe);
+      expect(committed.charge).toMatchObject({ transactionId: legacyId, reservationId: legacyId,
+        idempotencyKey: `voice:topic-001:${context.approvedScript.scriptHash}:${legacyId}` });
+      expect(await readFile(committed.masterPath, 'utf8')).toBe('fixture pcm wav');
+      expect(context.budgetGuard.spentCny()).toBe(0.45);
+    },
+  );
+
   it('rejects a direct attempt colliding with an existing non-owned transaction', async () => {
     const context = await voiceContext();
     const directory = join(context.store.root, 'voice', 'transactions', context.attemptId);
@@ -587,6 +702,26 @@ async function voiceContext(options: {
     probe,
     now: () => now,
   };
+}
+
+async function persistReservedAttempt(
+  context: Awaited<ReturnType<typeof voiceContext>>,
+  attemptId: string,
+  idempotencyKey: string,
+  transactionId = attemptId,
+): Promise<string> {
+  const estimate = { providerId: 'fake-direct', currency: 'CNY' as const, amount: 0.5, basis: 'configured fixture estimate' };
+  const authorization = context.budgetGuard.reserve(attemptId, estimate);
+  const binding = { schemaVersion: 1, attemptId, projectId: 'topic-001',
+    approvedScriptHash: context.approvedScript.scriptHash, providerId: 'fake-direct', idempotencyKey };
+  const directory = join(context.store.root, 'voice', 'audit', attemptId);
+  await nodeVoiceArtifactIo.mkdir(directory);
+  await writeFile(join(directory, 'attempt.json'), JSON.stringify({ ...binding, transactionId,
+    status: 'RESERVED', createdAt: now, updatedAt: now }));
+  await writeFile(join(directory, 'reservation.json'), JSON.stringify({ ...binding, estimate,
+    authorizedMaxCny: authorization.maximumAmountCny, remainingAtAuthorizationCny: authorization.remainingAtAuthorizationCny,
+    budgetScope: 'single-process; multi-process requires Task9 project lock', reservedAt: now }));
+  return directory;
 }
 
 function directProvider(options: {
