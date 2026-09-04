@@ -15,6 +15,8 @@ import {
   voiceRoot,
   writeJson,
   writeMarkerAtomically,
+  withVoiceAttempt,
+  assertVoiceAttemptUnused,
   type VoiceArtifactIo,
 } from './artifacts';
 import { audioMetadataSchema, type AudioMetadata, type AudioProbe } from './probe-audio';
@@ -90,6 +92,10 @@ export interface VoiceAttemptAuditBundle {
 }
 
 export async function generateVoice(request: GenerateVoiceRequest): Promise<GenerateVoiceResult> {
+  return withVoiceAttempt(request.store, transactionIdSchema.parse(request.attemptId), () => generateVoiceExclusively(request));
+}
+
+async function generateVoiceExclusively(request: GenerateVoiceRequest): Promise<GenerateVoiceResult> {
   const approvedScript = await readApprovedScript(request.store);
   if (request.requestedScriptHash !== approvedScript.scriptHash) {
     throw new Error('voice request does not match approved script hash');
@@ -97,6 +103,7 @@ export async function generateVoice(request: GenerateVoiceRequest): Promise<Gene
   const attemptId = transactionIdSchema.parse(request.attemptId);
   const io = request.artifactIo ?? nodeVoiceArtifactIo;
   const existing = await tryReadAttemptAudit(request.store, attemptId, io);
+  if (!existing) await assertVoiceAttemptUnused(request.store, attemptId, io);
   if (existing) {
     assertAttemptMatches(existing.attempt, approvedScript.script.projectId, approvedScript.scriptHash);
     assertAuditBundle(existing);
@@ -335,21 +342,29 @@ export async function cleanupVoiceArtifacts(
   try {
     const current = voiceCommitMarkerSchema.parse(await readJson(artifactIo, voicePath(store, 'current.json')));
     retained.add(current.transactionId);
-  } catch {
-    // No current transaction is valid to retain.
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   const committed: Array<{ id: string; updatedAt: string }> = [];
+  let attemptIds: string[];
   try {
-    for (const attemptId of await artifactIo.readdir(voicePath(store, 'audit'))) {
-      const bundle = await tryReadAttemptAudit(store, attemptId, artifactIo);
-      if (!bundle) continue;
-      if (bundle.attempt.status === 'RECOVERABLE') retained.add(bundle.attempt.transactionId);
-      if (bundle.attempt.status === 'COMMITTED') {
-        committed.push({ id: bundle.attempt.transactionId, updatedAt: bundle.attempt.updatedAt });
-      }
+    attemptIds = await artifactIo.readdir(voicePath(store, 'audit'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    attemptIds = [];
+  }
+  for (const attemptId of attemptIds) {
+    transactionIdSchema.parse(attemptId);
+    const bundle = await tryReadAttemptAudit(store, attemptId, artifactIo);
+    if (!bundle) throw new Error('voice cleanup audit is incomplete');
+    assertAuditBundle(bundle);
+    if (bundle.attempt.attemptId !== attemptId) throw new Error('voice cleanup audit directory mismatch');
+    // Committed history still follows the existing bounded retention policy.
+    // An unpublished result is recoverable even if its status write was interrupted.
+    if (bundle.result && bundle.attempt.status !== 'COMMITTED') retained.add(bundle.attempt.transactionId);
+    if (bundle.attempt.status === 'COMMITTED') {
+      committed.push({ id: bundle.attempt.transactionId, updatedAt: bundle.attempt.updatedAt });
     }
-  } catch {
-    // Audit directory may not exist yet.
   }
   committed.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   for (const entry of committed.slice(0, Math.max(0, options.keepRecentCommitted))) retained.add(entry.id);
@@ -420,7 +435,8 @@ async function tryReadAttemptAudit(
   let attemptBytes: Buffer;
   try {
     attemptBytes = await io.readFile(join(directory, 'attempt.json'));
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     return undefined;
   }
   const attempt = voiceAttemptAuditSchema.parse(JSON.parse(attemptBytes.toString('utf8')) as unknown);
@@ -441,7 +457,8 @@ async function optionalAudit<T>(
   let bytes: Buffer;
   try {
     bytes = await io.readFile(path);
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     return undefined;
   }
   return schema.parse(JSON.parse(bytes.toString('utf8')) as unknown);

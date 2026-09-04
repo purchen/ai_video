@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { mkdtemp } from 'node:fs/promises';
 import { afterEach, describe, expect, it } from 'vitest';
 import { scriptNarrationText } from '../../src/script/narration';
+import { BudgetGuard } from '../../src/config';
+import { ProviderRegistry } from '../../src/providers/registry';
 import { ProjectStore } from '../../src/store/project-store';
 import {
   createManualVoicePackage,
@@ -24,7 +26,7 @@ import {
   type AudioConverter,
   type AudioProbe,
 } from '../../src/voice/probe-audio';
-import { readCommittedVoice, voiceReportSchema, wordTimingsSchema } from '../../src/voice/generate-voice';
+import { generateVoice, readCommittedVoice, voiceReportSchema, wordTimingsSchema } from '../../src/voice/generate-voice';
 import { approvedFixture, now, persistDurableApproval } from './fixtures';
 
 const temporaryDirectories: string[] = [];
@@ -34,6 +36,42 @@ afterEach(async () => {
 });
 
 describe('transactional manual voice package', () => {
+  it('rejects reused manual attempt before conversion without changing committed bytes', async () => {
+    const context = await manualContext();
+    const request = { ...context, authorization: syntheticAuthorization() };
+    await importManualVoice(request);
+    const previous = await readCommittedVoice(context.store, context.probe);
+    const bytes = await readFile(previous.masterPath);
+    let conversions = 0;
+    await expect(importManualVoice({ ...request, converter: {
+      convertToWav48k: async () => { conversions++; throw new Error('converter executed'); },
+    } })).rejects.toThrow('voice attempt already exists');
+    expect(conversions).toBe(0);
+    expect(await readFile((await readCommittedVoice(context.store, context.probe)).masterPath)).toEqual(bytes);
+  });
+
+  it('excludes direct callers while a manual conversion owns the same attempt', async () => {
+    const context = await manualContext();
+    let release!: () => void;
+    let entered!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const winner = importManualVoice({ ...context, authorization: syntheticAuthorization(), converter: {
+      convertToWav48k: async (input, output) => {
+        entered(); await blocked;
+        await context.converter.convertToWav48k(input, output);
+      },
+    } });
+    await started;
+    const loser = await generateVoice({ ...context, registry: ProviderRegistry.detect({}),
+      budgetGuard: new BudgetGuard({ limitCny: 5, spentCny: 0, dryRun: false }),
+    }).then(() => 'accepted', () => 'rejected');
+    release();
+    await winner;
+    expect(loser).toBe('rejected');
+    expect(await readFile((await readCommittedVoice(context.store, context.probe)).masterPath, 'utf8')).toBe('converted 48000');
+  });
+
   it('rejects package creation without official durable approval before writes', async () => {
     const context = await manualContext({ durable: false, createPackage: false });
 

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { BudgetGuard } from '../../src/config';
 import type { TtsAdapter, TtsRequest, TtsResult } from '../../src/providers/contracts';
 import { ProviderRegistry } from '../../src/providers/registry';
-import { JianyingManualTtsAdapter, readManualVoicePackage } from '../../src/providers/tts/manual';
+import { createManualVoicePackage, importManualVoice, JianyingManualTtsAdapter, readManualVoicePackage } from '../../src/providers/tts/manual';
 import { OpenAiTtsAdapter } from '../../src/providers/tts/openai';
 import { scriptNarrationText } from '../../src/script/narration';
 import { ProjectStore } from '../../src/store/project-store';
@@ -197,6 +197,53 @@ describe('generateVoice durable and provider boundaries', () => {
 });
 
 describe('generateVoice settlement and publication transaction', () => {
+  it('rejects a direct attempt colliding with an existing non-owned transaction', async () => {
+    const context = await voiceContext();
+    const directory = join(context.store.root, 'voice', 'transactions', context.attemptId);
+    await nodeVoiceArtifactIo.mkdir(directory);
+    await writeFile(join(directory, 'master.wav'), 'manual committed bytes');
+    const provider = directProvider();
+    await expect(generateVoice({ ...context, registry: ProviderRegistry.fromTtsAdapters([provider.adapter]) }))
+      .rejects.toThrow('voice attempt already exists');
+    expect(provider.calls).toEqual([]);
+    expect(await readFile(join(directory, 'master.wav'), 'utf8')).toBe('manual committed bytes');
+  });
+
+  it.each(['direct', 'manual'] as const)('excludes concurrent same-attempt %s callers before mutable audit reads', async (caller) => {
+    const context = await voiceContext();
+    await createManualVoicePackage(context);
+    const provider = directProvider();
+    let release!: () => void;
+    let entered!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const estimate = provider.adapter.estimate.bind(provider.adapter);
+    let estimates = 0;
+    provider.adapter.estimate = async (request) => {
+      if (++estimates === 1) { entered(); await blocked; }
+      return estimate(request);
+    };
+    const request = { ...context, registry: ProviderRegistry.fromTtsAdapters([provider.adapter]) };
+    const winner = generateVoice(request);
+    await started;
+    let conversions = 0;
+    const competing = caller === 'direct' ? generateVoice(request) : importManualVoice({ ...context,
+      audioPath: 'unused.m4a',
+      authorization: { schemaVersion: 1, sourceKind: 'jianying-synthetic', authorization: 'synthetic',
+        voiceKind: 'synthetic', voiceId: 'narrator', syntheticIdentifier: 'jianying:narrator',
+        authorizedBy: 'editor', authorizedAt: now, consentReference: 'synthetic://narrator' },
+      converter: { convertToWav48k: async (_input, output) => { conversions++; await writeFile(output, 'manual bytes'); } },
+    });
+    const loser = await competing.then(() => 'accepted', () => 'rejected');
+    release();
+    await winner;
+    expect(loser).toBe('rejected');
+    expect(conversions).toBe(0);
+    expect(provider.calls.filter((call) => call === 'synthesize')).toHaveLength(1);
+    const committed = await readCommittedVoice(context.store, context.probe);
+    expect(await readFile(committed.masterPath, 'utf8')).toBe('fixture pcm wav');
+  });
+
   it('settles an authorized charge before committing schema-bound READY artifacts', async () => {
     const context = await voiceContext();
     const provider = directProvider({
@@ -431,6 +478,41 @@ describe('generateVoice settlement and publication transaction', () => {
     await cleanupVoiceArtifacts(context.store, { keepRecentCommitted: 1 });
     await expect(access(stale)).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(readCommittedVoice(context.store, context.probe)).resolves.toMatchObject({ report: { status: 'READY' } });
+  });
+
+  it('retains result-backed recovery when attempt status predates result persistence', async () => {
+    const context = await voiceContext();
+    const provider = directProvider();
+    const request = { ...context, registry: ProviderRegistry.fromTtsAdapters([provider.adapter]) };
+    await expect(generateVoice({ ...request, artifactIo: failingIo('marker') })).rejects.toThrow();
+    const path = join(context.store.root, 'voice', 'audit', context.attemptId, 'attempt.json');
+    const attempt = JSON.parse(await readFile(path, 'utf8'));
+    await writeFile(path, JSON.stringify({ ...attempt, status: 'PROVIDER_CALL_STARTED' }));
+    await cleanupVoiceArtifacts(context.store, { keepRecentCommitted: 0 });
+    await generateVoice(request);
+    expect(provider.calls.filter((call) => call === 'synthesize')).toHaveLength(1);
+    expect(await readFile((await readCommittedVoice(context.store, context.probe)).masterPath, 'utf8')).toBe('fixture pcm wav');
+  });
+
+  it.each(['malformed', 'unreadable'] as const)('fails cleanup closed on %s first audit before deleting unscanned recovery', async (failure) => {
+    const context = await voiceContext();
+    await expect(generateVoice({ ...context, registry: ProviderRegistry.fromTtsAdapters([directProvider().adapter]), artifactIo: failingIo('marker') }))
+      .rejects.toThrow();
+    const brokenId = '00000000-0000-4000-8000-000000000000';
+    const brokenDirectory = join(context.store.root, 'voice', 'audit', brokenId);
+    await nodeVoiceArtifactIo.mkdir(brokenDirectory);
+    await writeFile(join(brokenDirectory, 'attempt.json'), '{');
+    const io: VoiceArtifactIo = { ...nodeVoiceArtifactIo,
+      readdir: async (path) => path.endsWith('audit') ? [brokenId, context.attemptId] : nodeVoiceArtifactIo.readdir(path),
+      readFile: async (path) => {
+        if (failure === 'unreadable' && path.includes(brokenId)) throw Object.assign(new Error('denied'), { code: 'EACCES' });
+        return nodeVoiceArtifactIo.readFile(path);
+      },
+    };
+    await expect(cleanupVoiceArtifacts(context.store, { keepRecentCommitted: 0 }, io)).rejects.toThrow();
+    const master = join(context.store.root, 'voice', 'transactions', context.attemptId, 'master.wav');
+    expect(await readFile(master, 'utf8')).toBe('fixture pcm wav');
+    await expect(readVoiceAttemptAudit(context.store, context.attemptId)).resolves.toMatchObject({ attempt: { status: 'RECOVERABLE' } });
   });
 });
 

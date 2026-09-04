@@ -15,6 +15,8 @@ import {
   voiceRoot,
   writeJson,
   writeMarkerAtomically,
+  withVoiceAttempt,
+  assertVoiceAttemptUnused,
   type VoiceArtifactIo,
 } from '../../voice/artifacts';
 import { audioMetadataSchema, type AudioConverter, type AudioProbe } from '../../voice/probe-audio';
@@ -214,6 +216,10 @@ export interface ReadyVoiceResult {
 }
 
 export async function importManualVoice(request: ImportManualVoiceRequest): Promise<ReadyVoiceResult> {
+  return withVoiceAttempt(request.store, transactionIdSchema.parse(request.attemptId), () => importManualVoiceExclusively(request));
+}
+
+async function importManualVoiceExclusively(request: ImportManualVoiceRequest): Promise<ReadyVoiceResult> {
   const approvedScript = await readApprovedScript(request.store);
   if (request.requestedScriptHash !== approvedScript.scriptHash) {
     throw new Error('manual import request does not match approved script hash');
@@ -223,6 +229,7 @@ export async function importManualVoice(request: ImportManualVoiceRequest): Prom
   const rights = manualAudioAuthorizationSchema.parse(request.authorization);
   const io = request.artifactIo ?? nodeVoiceArtifactIo;
   const transactionId = transactionIdSchema.parse(request.attemptId);
+  await assertVoiceAttemptUnused(request.store, transactionId, io);
   const generatedAt = (request.now ?? (() => new Date().toISOString()))();
   const root = voiceRoot(request.store);
   const directory = voicePath(request.store, 'transactions', transactionId);

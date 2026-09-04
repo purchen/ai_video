@@ -3,12 +3,27 @@ import {
   mkdir as nodeMkdir,
   readFile as nodeReadFile,
   readdir as nodeReaddir,
+  realpath,
   rename as nodeRename,
   rm as nodeRm,
   writeFile as nodeWriteFile,
 } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import type { ProjectStore } from '../store/project-store';
+
+const activeVoiceAttempts = new Set<string>();
+
+export async function withVoiceAttempt<T>(store: ProjectStore, attemptId: string, run: () => Promise<T>): Promise<T> {
+  const root = await realpath(store.root);
+  const key = JSON.stringify([process.platform === 'win32' ? root.toLowerCase() : root, attemptId]);
+  if (activeVoiceAttempts.has(key)) throw new Error('voice attempt is already active');
+  activeVoiceAttempts.add(key);
+  try {
+    return await run();
+  } finally {
+    activeVoiceAttempts.delete(key);
+  }
+}
 
 export interface VoiceArtifactIo {
   mkdir(path: string): Promise<void>;
@@ -27,6 +42,19 @@ export const nodeVoiceArtifactIo: VoiceArtifactIo = {
   rename: async (from, to) => { await nodeRename(from, to); },
   rm: async (path) => { await nodeRm(path, { force: true, recursive: true }); },
 };
+
+export async function assertVoiceAttemptUnused(store: ProjectStore, attemptId: string, io: VoiceArtifactIo): Promise<void> {
+  for (const namespace of ['audit', 'transactions']) {
+    let entries: string[];
+    try {
+      entries = await io.readdir(voicePath(store, namespace));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+    if (entries.includes(attemptId)) throw new Error('voice attempt already exists');
+  }
+}
 
 export function voiceRoot(store: ProjectStore): string {
   return boundedPath(store, 'voice');
