@@ -20,7 +20,7 @@ import {
   assertVoiceAttemptUnused,
   type VoiceArtifactIo,
 } from './artifacts';
-import { audioMetadataSchema, type AudioMetadata, type AudioProbe } from './probe-audio';
+import { audioMetadataSchema, type AudioMetadata, type AudioProbe, type AudioConverter } from './probe-audio';
 import {
   costRecordSchema,
   transactionIdSchema,
@@ -68,6 +68,7 @@ export interface GenerateVoiceRequest {
   budgetGuard: BudgetGuard;
   store: ProjectStore;
   probe: AudioProbe;
+  converter?: AudioConverter;
   voice?: VoiceSelection;
   now?: () => string;
   artifactIo?: VoiceArtifactIo;
@@ -141,6 +142,7 @@ async function generateVoiceExclusively(request: GenerateVoiceRequest): Promise<
   const transactionId = attemptId;
   const transactionDirectory = voicePath(request.store, 'transactions', transactionId);
   const temporaryAudio = join(transactionDirectory, 'master.tmp.wav');
+  const convertedAudio = join(transactionDirectory, 'master.converted.tmp.wav');
   const ttsRequest: TtsRequest = {
     idempotencyKey,
     approvedScriptHash: approvedScript.scriptHash,
@@ -236,7 +238,13 @@ async function generateVoiceExclusively(request: GenerateVoiceRequest): Promise<
       throw new Error('actual TTS cost exceeds authorized amount');
     }
 
-    const metadata = audioMetadataSchema.parse(await request.probe.probe(temporaryAudio));
+    let metadata = audioMetadataSchema.parse(await request.probe.probe(temporaryAudio));
+    let authoritativePath = temporaryAudio;
+    if (!isAuthoritativeAudio(metadata) && request.converter) {
+      await request.converter.convertToWav48k(temporaryAudio, convertedAudio);
+      metadata = audioMetadataSchema.parse(await request.probe.probe(convertedAudio));
+      authoritativePath = convertedAudio;
+    }
     assertAuthoritativeAudio(metadata);
     const timings = createTimings(
       approvedScript.script.projectId,
@@ -258,7 +266,7 @@ async function generateVoiceExclusively(request: GenerateVoiceRequest): Promise<
     const timingsPath = join(transactionDirectory, 'word-timings.json');
     const reportPath = join(transactionDirectory, 'voice-report.json');
     const chargePath = join(transactionDirectory, 'charge.json');
-    await io.rename(temporaryAudio, masterPath);
+    await io.rename(authoritativePath, masterPath);
     await writeJson(io, timingsPath, timings);
     await writeJson(io, reportPath, report);
     await writeJson(io, chargePath, charge);
@@ -306,6 +314,7 @@ async function generateVoiceExclusively(request: GenerateVoiceRequest): Promise<
     throw error;
   } finally {
     await io.rm(temporaryAudio).catch(() => undefined);
+    await io.rm(convertedAudio).catch(() => undefined);
   }
 }
 
@@ -688,12 +697,15 @@ function assertSynthesisBinding(result: TtsResult, adapterId: string, request: T
 }
 
 function assertAuthoritativeAudio(metadata: { sampleRateHz: number; formatName: string; codecName: string }): void {
-  const formats = metadata.formatName.toLowerCase().split(',');
-  if (metadata.sampleRateHz !== 48_000
-    || !formats.includes('wav')
-    || !metadata.codecName.toLowerCase().startsWith('pcm_')) {
+  if (!isAuthoritativeAudio(metadata)) {
     throw new Error('authoritative voice master must be 48 kHz PCM WAV');
   }
+}
+
+function isAuthoritativeAudio(metadata: { sampleRateHz: number; formatName: string; codecName: string }): boolean {
+  return metadata.sampleRateHz === 48_000
+    && metadata.formatName.toLowerCase().split(',').includes('wav')
+    && metadata.codecName.toLowerCase().startsWith('pcm_');
 }
 
 function createTimings(

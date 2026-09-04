@@ -835,3 +835,96 @@ async function transactionDirectories(store: ProjectStore): Promise<string[]> {
     return [];
   }
 }
+
+it('explicitly converts non-48k direct audio and commits only re-probed authoritative bytes', async () => {
+  const context = await voiceContext();
+  const provider = directProvider();
+  const metadata = await context.probe.probe('unused');
+  const probe = {
+    probe: async (path: string) => ({
+      ...metadata,
+      sampleRateHz:
+        (await readFile(path, 'utf8')) === 'converted 48k' ? 48000 : 24000,
+    }),
+  };
+  const converted: string[] = [];
+  const converter = {
+    convertToWav48k: async (input: string, output: string) => {
+      converted.push(input);
+      await writeFile(output, 'converted 48k');
+    },
+  };
+  const result = await generateVoice({
+    ...context,
+    probe,
+    converter,
+    registry: ProviderRegistry.fromTtsAdapters([provider.adapter]),
+  });
+  expect(result).toMatchObject({
+    status: 'READY',
+    report: { sampleRateHz: 48000 },
+  });
+  const committed = await readCommittedVoice(context.store, probe);
+  expect(await readFile(committed.masterPath, 'utf8')).toBe('converted 48k');
+  expect(converted).toHaveLength(1);
+  expect(
+    provider.requests.every(
+      (r) => r.text === scriptNarrationText(context.approvedScript.script),
+    ),
+  ).toBe(true);
+  expect(
+    (
+      await readdir(
+        join(context.store.root, 'voice', 'transactions', context.attemptId),
+      )
+    ).filter((f) => f.includes('.tmp')),
+  ).toEqual([]);
+});
+
+it('does not re-encode compliant direct audio and converter failure preserves old current and charge audit', async () => {
+  const context = await voiceContext();
+  const provider = directProvider();
+  let conversions = 0;
+  const converter = {
+    convertToWav48k: async () => {
+      conversions++;
+      throw new Error('converter failed');
+    },
+  };
+  await generateVoice({
+    ...context,
+    converter,
+    registry: ProviderRegistry.fromTtsAdapters([provider.adapter]),
+  });
+  expect(conversions).toBe(0);
+  const old = await readFile(join(context.store.root, 'voice', 'current.json'));
+  const attemptId = '00000000-0000-4000-8000-000000000099';
+  const probe = {
+    probe: async () => ({
+      ...(await context.probe.probe('unused')),
+      sampleRateHz: 24000,
+    }),
+  };
+  await expect(
+    generateVoice({
+      ...context,
+      attemptId,
+      probe,
+      converter,
+      registry: ProviderRegistry.fromTtsAdapters([provider.adapter]),
+    }),
+  ).rejects.toThrow('converter failed');
+  expect(conversions).toBe(1);
+  expect(
+    await readFile(join(context.store.root, 'voice', 'current.json')),
+  ).toEqual(old);
+  expect(
+    (await readVoiceAttemptAudit(context.store, attemptId)).attempt.status,
+  ).toBe('BLOCKED_MANUAL_RECOVERY');
+  expect(
+    (await readVoiceAttemptAudit(context.store, attemptId)).charge,
+  ).toBeDefined();
+  await expect(
+    access(join(context.store.root, 'voice', 'transactions', attemptId)),
+  ).rejects.toThrow();
+});
