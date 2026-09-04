@@ -34,7 +34,9 @@
         "s4a",
         "s4b"
       ],
-      "lenses": []
+      "lenses": [
+        "daily-self-review"
+      ]
     },
     {
       "type": "counter-evidence",
@@ -107,8 +109,12 @@
     {
       "id": "s4a",
       "text": "我的理解是，清单本来应该帮助选择；如果每一项都同样重要，选择反而被推回给了焦虑。",
-      "type": "opinion",
-      "sourceIds": []
+      "type": "analysis",
+      "sourceIds": [],
+      "priorFactSentenceIds": [
+        "s2a",
+        "s2b"
+      ]
     },
     {
       "id": "s4b",

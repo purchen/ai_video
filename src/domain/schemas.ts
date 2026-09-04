@@ -19,6 +19,7 @@ export const sourceRecordSchema = z.object({
   sourceType: z.enum(['primary', 'official-data', 'professional-media', 'expert-analysis', 'comment-sample']),
   evidenceWeight: z.enum(['high', 'medium-high', 'medium', 'low']),
   capturedAt: z.string().datetime(),
+  speakers: z.array(z.string().trim().min(1)).optional(),
 });
 
 export type SourceRecord = z.infer<typeof sourceRecordSchema>;
@@ -26,10 +27,14 @@ export type SourceRecord = z.infer<typeof sourceRecordSchema>;
 export const scriptSentenceSchema = z.object({
   id: z.string().min(1),
   text: z.string().min(1),
-  type: z.enum(['hook', 'fact', 'opinion', 'transition', 'call-to-action']),
+  type: z.enum(['hook', 'fact', 'attribution', 'analysis', 'opinion', 'transition', 'call-to-action']),
   sourceIds: z.array(z.string().min(1)),
   attribution: z.string().min(1).optional(),
+  attributionSourceId: z.string().min(1).optional(),
+  priorFactSentenceIds: z.array(z.string().min(1)).optional(),
 }).superRefine((sentence, context) => {
+  if (sentence.type === 'analysis' && !sentence.priorFactSentenceIds?.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'analysis requires prior fact sentence references' });
+  if (sentence.type === 'attribution' && (!sentence.attribution?.trim() || !sentence.attributionSourceId || !sentence.sourceIds.includes(sentence.attributionSourceId))) context.addIssue({ code: z.ZodIssueCode.custom, message: 'attribution requires a speaker and bound source' });
   if (sentence.type === 'fact' && sentence.sourceIds.length === 0) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -70,6 +75,13 @@ export const scriptDocumentSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 }).superRefine((script, context) => {
+  const sentenceById = new Map(script.sentences.map(s => [s.id, s]));
+  const priorFacts = new Set<string>();
+  for (const id of script.sections.flatMap(section => section.sentenceIds)) {
+    const sentence = sentenceById.get(id);
+    if (sentence?.type === 'analysis' && sentence.priorFactSentenceIds?.some(ref => !priorFacts.has(ref))) context.addIssue({ code: z.ZodIssueCode.custom, message: `analysis sentence ${id} must reference a prior fact in narration order` });
+    if (sentence?.type === 'fact') priorFacts.add(id);
+  }
   if (script.sections.length !== scriptSectionOrder.length
     || script.sections.some((section, index) => section.type !== scriptSectionOrder[index])) {
     context.addIssue({
@@ -86,6 +98,12 @@ export function validateEvidenceBindings(sources: SourceRecord[], sentences: Scr
   const sourceById = new Map(sources.map((source) => [source.id, source]));
 
   for (const sentence of sentences) {
+    if (sentence.type === 'attribution') {
+      const source = sourceById.get(sentence.attributionSourceId ?? '');
+      if (!source || !sentence.sourceIds.includes(source.id)) throw new Error(`attribution sentence ${sentence.id} references an unknown source`);
+      if (sentence.attribution !== source.publisher && !source.speakers?.includes(sentence.attribution ?? '')) throw new Error(`attribution sentence ${sentence.id} speaker is not recorded in its source`);
+      for (const id of sentence.sourceIds) if (!sourceById.has(id)) throw new Error(`attribution references unknown source ${id}`);
+    }
     if (sentence.type !== 'fact') continue;
 
     for (const sourceId of sentence.sourceIds) {

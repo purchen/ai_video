@@ -14,10 +14,14 @@ import type { AudioProbe } from '../voice/probe-audio';
 import { withProjectLock } from '../workflow/project-lock';
 import { sha256Bytes } from '../voice/artifacts';
 import { hashCanonicalJson } from '../script/hash-script';
+import { audioMeasurementsSchema, createFfmpegAudioAnalyzer, type AudioAnalyzer, type AudioMeasurements } from '../voice/analyze-audio';
 
-export const qcReportSchema = z.object({ schemaVersion: z.literal(1), checkedAt: z.string().datetime(), status: z.enum(['QC_PASSED', 'FAILED_QC']), errors: z.array(z.object({ check: z.string(), message: z.string() })), artifacts: z.array(z.string()), inputHashes: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)) });
+export const qcReportSchema = z.object({ schemaVersion: z.literal(1), checkedAt: z.string().datetime(), status: z.enum(['QC_PASSED', 'FAILED_QC']), errors: z.array(z.object({ check: z.string(), message: z.string() })), artifacts: z.array(z.string()), inputHashes: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)),
+  audioMeasurements: z.object({ narration: audioMeasurementsSchema.optional(), finalMix: audioMeasurementsSchema.optional(), music: audioMeasurementsSchema.optional(), musicRelativeDb: z.number().finite().optional() }),
+  manualChecks: z.array(z.object({ check: z.literal('intelligibility'), status: z.literal('REQUIRED'), message: z.string() })).min(1),
+});
 export type QcReport = z.infer<typeof qcReportSchema>;
-export interface QcDependencies { probe?: AudioProbe; probeMedia?: (path: string) => Promise<MediaMetadata> }
+export interface QcDependencies { probe?: AudioProbe; probeMedia?: (path: string) => Promise<MediaMetadata>; analyzeAudio?: AudioAnalyzer }
 
 /** Only final selected resources are authoritative; unused unknown candidates are safely ignored. */
 export function selectedResourcePaths(plan: EditPlan): string[] {
@@ -59,16 +63,50 @@ export async function inspectQc(root: string, dependencies: QcDependencies = {})
     await validateSelectedResources(root, plan, assets);
     return plan;
   });
-  await check('media', async () => {
+  const media = await check('media', async () => {
     const path = await boundedLocalFile(root, 'output/final.mp4');
     const info = await (dependencies.probeMedia ?? probeMedia)(path);
     // Even when another artifact is invalid, inspect stream/geometry independently.
     assertRenderedMedia(info, voice?.report.durationMs ?? info.format.duration * 1000);
+    return info;
+  });
+  if (media) await check('duration', async () => {
+    if (media.format.duration < 60 || media.format.duration > 120) throw new Error('production final video must be between 60 and 120 seconds');
+  });
+  const audioMeasurements: QcReport['audioMeasurements'] = {};
+  const analyze: AudioAnalyzer = dependencies.analyzeAudio ?? (async (path, options) => createFfmpegAudioAnalyzer((await resolveManagedMediaTools()).ffmpeg)(path, options));
+  const measure = async (name: 'narration' | 'finalMix', path: string) => {
+    await check(`audio-${name}`, async () => {
+      const safePath = name === 'finalMix' ? await boundedLocalFile(root, 'output/final.mp4') : path;
+      const measurement = audioMeasurementsSchema.parse(await analyze(safePath)); audioMeasurements[name] = measurement;
+      assertAudibleUnclipped(measurement);
+    });
+  };
+  if (voice) await measure('narration', voice.masterPath);
+  await measure('finalMix', join(root, 'output/final.mp4'));
+  if (plan?.music.mode === 'ambient') await check('audio-music-relative', async () => {
+    const music = plan.music;
+    if (music.mode !== 'ambient') return;
+    const levels = audioMeasurementsSchema.parse(await analyze(await boundedLocalFile(root, music.asset.path), { gainDb: music.relativeGainDb, durationMs: plan.voice.durationMs, loop: true }));
+    audioMeasurements.music = levels;
+    const narration = audioMeasurements.narration?.integratedLufs;
+    if (narration == null || levels.integratedLufs === null) throw new Error('music/narration relative loudness is unmeasured; supply measurable audio or omit music');
+    const relative = levels.integratedLufs - narration;
+    audioMeasurements.musicRelativeDb = relative;
+    if (relative > -16) throw new Error(`effective music is ${relative.toFixed(2)} dB relative to narration; reduce music gain to reach at most -16 dB or omit music`);
   });
   const artifacts = ['topic-card.json', 'topic-approval.commit.json', 'approved-script.json', 'script-approval.commit.json', 'asset-manifest.json', 'edit-plan.json', 'voice/current.json', 'output/final.mp4', ...(plan ? selectedResourcePaths(plan) : [])];
   const inputHashes: Record<string, string> = {};
   for (const path of artifacts) await check(`hash:${path}`, async () => { inputHashes[path] = sha256Bytes(await readFile(await boundedLocalFile(root, path))); });
-  return qcReportSchema.parse({ schemaVersion: 1, checkedAt: new Date().toISOString(), status: errors.length ? 'FAILED_QC' : 'QC_PASSED', errors, artifacts: ['project.json', ...artifacts, ...(voice ? [voice.masterPath] : [])], inputHashes });
+  return qcReportSchema.parse({ schemaVersion: 1, checkedAt: new Date().toISOString(), status: errors.length ? 'FAILED_QC' : 'QC_PASSED', errors, artifacts: ['project.json', ...artifacts, ...(voice ? [voice.masterPath] : [])], inputHashes, audioMeasurements,
+    manualChecks: [{ check: 'intelligibility', status: 'REQUIRED', message: 'Human listening review of narration intelligibility, exact words and caption timing is required before publication; no ASR or listening pass is claimed.' }],
+  });
+}
+function assertAudibleUnclipped(levels: AudioMeasurements): void {
+  if (levels.integratedLufs === null || levels.truePeakDbtp === null) throw new Error('required audio loudness/peak is unmeasured or audio is silent');
+  if (levels.truePeakDbtp >= -0.1) throw new Error(`possible clipping: true peak ${levels.truePeakDbtp} dBTP; reduce gain/re-export`);
+  if (levels.integratedLufs < -45) throw new Error(`narration/mix is too quiet (${levels.integratedLufs} LUFS); review gain`);
+  if (levels.silenceSegments.some(s => s.endMs - s.startMs >= 2000)) throw new Error('audio contains a silence segment of at least 2 seconds below -50 dB; review recording/edit');
 }
 export async function persistQc(root: string, report: QcReport): Promise<void> {
   const directory = join(root, 'reports'); await mkdir(directory, { recursive: true });

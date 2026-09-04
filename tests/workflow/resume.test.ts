@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ProjectStore } from '../../src/store/project-store';
 import { runNextStage, runStage, readWorkflowStatus, withProjectLock } from '../../src/workflow/run-stage';
-import { prepared, production, selectedProduction, probe, media } from './fixtures';
+import { prepared, production, selectedProduction, probe, media, analyzeAudio } from './fixtures';
 import { assetManifestSchema, editPlanSchema } from '../../src/edit/build-edit-plan';
 import { runCli } from '../../src/cli';
 import { projectManifestSchema } from '../../src/domain/schemas';
@@ -119,7 +119,7 @@ async function rendered(selected = false) {
   const f = await (selected ? selectedProduction() : production()); roots.push(f.parent);
   const manifest = await f.store.readJson('project.json', projectManifestSchema);
   await f.store.writeJson('project.json', projectManifestSchema, { ...manifest, workflowState: 'EDIT_PLAN_READY' });
-  const deps = { probe, probeMedia: async () => media, render: async (root: string) => { await mkdir(join(root, 'output'), { recursive: true }); const outputPath = join(root, 'output/final.mp4'); await writeFile(outputPath, 'offline video double'); return { outputPath, durationMs: 60000 }; } };
+  const deps = { probe, analyzeAudio, probeMedia: async () => media, render: async (root: string) => { await mkdir(join(root, 'output'), { recursive: true }); const outputPath = join(root, 'output/final.mp4'); await writeFile(outputPath, 'offline video double'); return { outputPath, durationMs: 60000 }; } };
   expect(await runStage(f.store.root, 'render', deps)).toBe('RENDERED');
   return { ...f, deps };
 }

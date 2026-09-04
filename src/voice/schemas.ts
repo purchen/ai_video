@@ -76,10 +76,11 @@ export const voiceAuthorizationSchema = z.object({
   schemaVersion: z.literal(1),
   voiceId: z.string().min(1),
   kind: z.enum(['cloned', 'similar-real-person']),
+  owner: z.string().trim().min(1),
   authorizedBy: z.string().min(1),
   authorizedAt: z.string().datetime(),
   consentReference: z.string().min(1),
-});
+}).strict();
 
 export const voiceChargeSchema = z.object({
   schemaVersion: z.literal(1),

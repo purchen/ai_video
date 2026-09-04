@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "transactionId": "75c9c785-1282-4090-bde3-f130753c26d1",
+  "transactionId": "cfb77464-15f5-4583-8fa1-c5aa9a9aa73e",
   "projectId": "mvp-project",
-  "approvedScriptHash": "41cb6dafa23968c4f17048444b38bca0d6db1b3bca2f1e950498002fc6513f98",
+  "approvedScriptHash": "b2dd682f8657e59efa3447754b419c60fc4e5f0312ae5a5b2278a9b4a22ba1d8",
   "providerId": "windows-system-speech-fixture",
-  "reservationId": "75c9c785-1282-4090-bde3-f130753c26d1",
-  "idempotencyKey": "voice:mvp-project:41cb6dafa23968c4f17048444b38bca0d6db1b3bca2f1e950498002fc6513f98:75c9c785-1282-4090-bde3-f130753c26d1",
+  "reservationId": "cfb77464-15f5-4583-8fa1-c5aa9a9aa73e",
+  "idempotencyKey": "voice:mvp-project:b2dd682f8657e59efa3447754b419c60fc4e5f0312ae5a5b2278a9b4a22ba1d8:cfb77464-15f5-4583-8fa1-c5aa9a9aa73e",
   "authorizedMaxCny": 0,
   "remainingAtAuthorizationCny": 0,
   "budgetScope": "single-process; multi-process requires Task9 project lock",
@@ -22,5 +22,5 @@
     "basis": "replay locally synthesized Windows Huihui fixture; no paid API or external call"
   },
   "status": "SETTLED_WITHIN_AUTHORIZATION",
-  "settledAt": "2026-09-04T02:54:15.287Z"
+  "settledAt": "2026-09-04T03:29:52.995Z"
 }

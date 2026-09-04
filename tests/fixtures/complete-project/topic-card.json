@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "transactionId": "9647e095-dccb-4211-8404-d9b3ede806b0",
+  "transactionId": "871ab145-8bac-4ec0-aea9-19e4441eadc8",
   "projectId": "topic-001",
   "candidateId": "candidate-1",
-  "approvedAt": "2026-09-04T02:30:48.987Z",
+  "approvedAt": "2026-09-04T03:33:03.256Z",
   "approvedBy": "fixture-editor",
   "candidate": {
     "title": "夜校报名延长",

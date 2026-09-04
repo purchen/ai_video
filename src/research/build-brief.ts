@@ -18,7 +18,18 @@ export type ExplicitClaim = z.infer<typeof claimSchema>;
 export type ResearchSource = SourceRecord & { claim?: ExplicitClaim };
 
 const researchSourceSchema = sourceRecordSchema.extend({ claim: claimSchema.optional() });
-const sourcesArtifactSchema = z.object({ schemaVersion: z.literal(1), sources: z.array(researchSourceSchema) });
+export const researchLensSchema = z.object({
+  id: z.string().trim().min(1), label: z.string().trim().min(1), text: z.string().trim().min(1),
+  basis: z.enum(['source', 'everyday-common-sense']), sourceIds: z.array(z.string().trim().min(1)),
+  applicability: z.string().trim().min(1),
+}).strict().superRefine((lens, context) => {
+  if ((lens.basis === 'source') !== (lens.sourceIds.length > 0)) context.addIssue({ code: z.ZodIssueCode.custom, message: 'source lens needs sources; common-sense lens must remain non-evidentiary' });
+});
+export type ResearchLens = z.infer<typeof researchLensSchema>;
+export const researchLensesSchema = z.array(researchLensSchema).max(2).superRefine((lenses, context) => {
+  if (new Set(lenses.map(l => l.id)).size !== lenses.length) context.addIssue({ code: z.ZodIssueCode.custom, message: 'chosen lens ids must be unique' });
+});
+export const sourcesArtifactSchema = z.object({ schemaVersion: z.literal(1), sources: z.array(researchSourceSchema), lenses: researchLensesSchema.optional() });
 const everydayCommonSenseNoteSchema = z.object({
   kind: z.literal('everyday-common-sense'),
   text: z.string().min(1),
@@ -52,6 +63,7 @@ export interface ResearchBrief {
   conflicts: ClaimConflict[];
   unknowns: string[];
   candidateLenses: string[];
+  chosenLenses: ResearchLens[];
   risks: string[];
   publicQuestions: string[];
   explanationNotes: ExplanationNote[];
@@ -64,6 +76,7 @@ export interface ResearchArtifactOptions {
 }
 
 export interface BuildResearchBriefOptions {
+  lenses?: ResearchLens[];
   /**
    * Non-evidentiary context for framing a lens. It is intentionally separate
    * from source records and can never create facts or conflicts.
@@ -81,6 +94,11 @@ export function buildResearchBrief(
   options: BuildResearchBriefOptions = {},
 ): ResearchBrief {
   const validatedSources = sources.map((source) => researchSourceSchema.parse(source));
+  const chosenLenses = researchLensesSchema.parse(options.lenses ?? []);
+  for (const lens of chosenLenses) for (const id of lens.sourceIds) {
+    const source = validatedSources.find(s => s.id === id);
+    if (!source || source.sourceType === 'comment-sample') throw new Error(`lens ${lens.id} requires a resolvable non-comment source ${id}`);
+  }
   const commonSenseNotes = (options.explanationNotes ?? []).map((note) => everydayCommonSenseNoteSchema.parse(note));
   const factClaims = validatedSources.filter(hasFactClaim);
   const conflicts = detectConflicts(factClaims);
@@ -98,19 +116,21 @@ export function buildResearchBrief(
   const unknowns = [
     ...conflicts.map((conflict) => `Unresolved claim: ${conflict.claimKey}`),
     ...(confirmedFacts.length === 0 ? ['No supported, explicit event claim is confirmed.'] : []),
+    ...(chosenLenses.length === 0 ? ['Choose one or two relevant lenses with explicit explanation and applicability limits.'] : []),
   ];
   const risks = [...new Set([
     ...topic.risks,
     ...conflicts.map((conflict) => `unresolved-conflict:${conflict.claimKey}`),
   ])].sort(lexical);
-  const canDraftScript = conflicts.length === 0 && confirmedFacts.length > 0;
+  const canDraftScript = conflicts.length === 0 && confirmedFacts.length > 0 && chosenLenses.length >= 1;
 
   return {
     topic: { title: topic.title, normalizedTopic: topic.normalizedTopic, questionHook: topic.questionHook },
     confirmedFacts,
     conflicts,
     unknowns,
-    candidateLenses: [`围绕“${topic.questionHook}”梳理用户体验与公共服务供给。`],
+    candidateLenses: chosenLenses.map(lens => lens.id),
+    chosenLenses,
     risks,
     publicQuestions,
     explanationNotes,
@@ -124,7 +144,7 @@ export async function writeResearchArtifacts(
   sources: ResearchSource[],
   options: ResearchArtifactOptions,
 ): Promise<void> {
-  const sourceArtifact = sourcesArtifactSchema.parse({ schemaVersion: 1, sources });
+  const sourceArtifact = sourcesArtifactSchema.parse({ schemaVersion: 1, sources, lenses: brief.chosenLenses });
   await mkdir(options.outputDirectory, { recursive: true });
   await Promise.all([
     writeFile(join(options.outputDirectory, 'sources.json'), `${JSON.stringify(sourceArtifact, null, 2)}\n`, 'utf8'),
@@ -194,7 +214,7 @@ function renderResearchBrief(brief: ResearchBrief): string {
     ...renderItems(brief.unknowns),
     '',
     '## Candidate lenses',
-    ...renderItems(brief.candidateLenses),
+    ...renderItems(brief.chosenLenses.map(lens => `${lens.id} (${lens.label}): ${lens.text} [${lens.basis}; ${lens.sourceIds.join(', ')}]; applicability: ${lens.applicability}`)),
     '',
     '## Risks',
     ...renderItems(brief.risks),

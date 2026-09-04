@@ -26,7 +26,7 @@ type ExecFile = (
   args: readonly string[],
 ) => Promise<{ stdout: string; stderr: string }>;
 
-export function createFfprobeAudioProbe(executablePath: string, execFile: ExecFile = execute): AudioProbe {
+export function createFfprobeAudioProbe(executablePath: string, execFile: ExecFile = execute, measureLoudness?: (path: string) => Promise<number | null>): AudioProbe {
   assertManagedExecutable(executablePath, 'ffprobe');
   return {
     async probe(audioPath) {
@@ -51,7 +51,7 @@ export function createFfprobeAudioProbe(executablePath: string, execFile: ExecFi
         channels: parsed.streams[0].channels,
         formatName: parsed.format.format_name,
         codecName: parsed.streams[0].codec_name,
-        integratedLufs: null,
+        integratedLufs: measureLoudness ? await measureLoudness(audioPath) : null,
       });
     },
   };

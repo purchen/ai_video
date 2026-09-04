@@ -45,6 +45,7 @@ export function validateScript(
   if (!brief && !explicitSources && sentences.some((sentence) => isRecord(sentence) && sentence.type === 'fact')) {
     errors.push('fact evidence context is required');
   }
+  if (!explicitSources && sentences.some(sentence => isRecord(sentence) && sentence.type === 'attribution')) errors.push('attribution requires explicit source/speaker evidence context');
   for (const sentence of sentences) {
     if (!isRecord(sentence) || typeof sentence.id !== 'string') continue;
     const sourceIds = Array.isArray(sentence.sourceIds) ? sentence.sourceIds : [];
@@ -62,6 +63,7 @@ export function validateScript(
   const mechanism = sections.find((section) => isRecord(section) && section.type === 'mechanism');
   if (isRecord(mechanism)) {
     const lenses = Array.isArray(mechanism.lenses) ? mechanism.lenses : [];
+    if (lenses.length === 0) errors.push('mechanism section requires at least one chosen lens');
     if (lenses.length > 2) errors.push('mechanism section may use at most two lenses');
     if (brief) {
       for (const lens of lenses) {

@@ -1,5 +1,9 @@
 # Manual inspection record — 2026-09-04
 
+## Final-fix regeneration note
+
+The observations quoted below concern the pre-final-fix chain. The revised chain was rebuilt from the same narration and original Huihui source WAV, with explicit lens/analysis metadata and measured QC, rather than patched hashes. No new full-motion or listening review was performed. New measured narration is −23.87 LUFS / −0.71 dBTP; final mix is −23.89 LUFS / −3.75 dBTP; neither has a detected ≥2-second silence below −50 dB. The historical sentence “Probe loudness is null” below describes the older check only. Human intelligibility, exact spoken words and caption timing remain REQUIRED.
+
 Scope: a local test sample, not editorial approval for publication. Narration is Windows built-in synthetic speech; examples and source records are original fictional test data. Automated `offline-fixture-editor` approvals exercise real approval mechanics but do not assert an actual human approved a production story.
 
 ## Controller observations (reported verbatim)

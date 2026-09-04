@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "transactionId": "a0b6b72b-e5a0-4155-bfa0-d950abb4c17c",
+  "transactionId": "b7da2013-fc18-49fa-8254-5f3825c8c199",
   "approvalType": "script",
   "projectId": "topic-001",
   "artifactName": "approved-script.json",
-  "artifactHash": "13174fcfdc00b47dc3ddb8c9bec0c140a5deb7004aadd9dbbc484205e66c140d",
-  "projectHash": "cdc9a6bbe933859e32cdabec18653eb30caf47af33a63a0031bfe8347cfe9807",
+  "artifactHash": "7eb72a0819bd021bcf88c77592dcab7169da3570e26a601791834dbacb8d965d",
+  "projectHash": "0bf0c8bd9d58c2b666ba15567049ad19d4c94356913bba0b2d5b4d27013f00d1",
   "projectSnapshot": {
     "schemaVersion": 1,
     "id": "topic-001",
     "topic": "夜校报名延长",
     "workflowState": "SCRIPT_APPROVED",
     "createdAt": "2026-09-01T00:00:00.000Z",
-    "updatedAt": "2026-09-04T02:30:49.053Z",
+    "updatedAt": "2026-09-04T03:33:03.276Z",
     "sources": [
       {
         "schemaVersion": 1,
@@ -58,7 +58,9 @@
           "sentenceIds": [
             "sentence-mechanism"
           ],
-          "lenses": []
+          "lenses": [
+            "user-experience"
+          ]
         },
         {
           "type": "counter-evidence",
@@ -135,5 +137,5 @@
     }
   },
   "expectedWorkflowState": "SCRIPT_APPROVED",
-  "committedAt": "2026-09-04T02:30:49.053Z"
+  "committedAt": "2026-09-04T03:33:03.276Z"
 }

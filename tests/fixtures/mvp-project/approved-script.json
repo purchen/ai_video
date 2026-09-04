@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "transactionId": "dbcc9ab7-1e83-4fe2-9534-4294bf06e731",
-  "approvedAt": "2026-09-04T02:54:15.225Z",
+  "transactionId": "a4460bd1-8c7d-4914-8b72-5ecb2bd61a90",
+  "approvedAt": "2026-09-04T03:29:52.947Z",
   "approvedBy": "offline-fixture-editor",
-  "scriptHash": "41cb6dafa23968c4f17048444b38bca0d6db1b3bca2f1e950498002fc6513f98",
+  "scriptHash": "b2dd682f8657e59efa3447754b419c60fc4e5f0312ae5a5b2278a9b4a22ba1d8",
   "script": {
     "schemaVersion": 1,
     "id": "mvp-life-attitude",
@@ -40,7 +40,9 @@
           "s4a",
           "s4b"
         ],
-        "lenses": []
+        "lenses": [
+          "daily-self-review"
+        ]
       },
       {
         "type": "counter-evidence",
@@ -113,8 +115,12 @@
       {
         "id": "s4a",
         "text": "我的理解是，清单本来应该帮助选择；如果每一项都同样重要，选择反而被推回给了焦虑。",
-        "type": "opinion",
-        "sourceIds": []
+        "type": "analysis",
+        "sourceIds": [],
+        "priorFactSentenceIds": [
+          "s2a",
+          "s2b"
+        ]
       },
       {
         "id": "s4b",

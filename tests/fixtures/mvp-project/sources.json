@@ -17,5 +17,15 @@
         "text": "本测试虚构日记第一晚列十项任务完成两项，第二晚只选一项并记录下一步。"
       }
     }
+  ],
+  "lenses": [
+    {
+      "id": "daily-self-review",
+      "label": "生活态度与日常复盘",
+      "text": "区分完成的进展和未完成计划，以虚构日记讨论如何评价一天。",
+      "basis": "everyday-common-sense",
+      "sourceIds": [],
+      "applicability": "非实证心理学结论，不证明效率因果，也不能替代紧急责任与期限。"
+    }
   ]
 }

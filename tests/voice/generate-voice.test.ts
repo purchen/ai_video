@@ -785,6 +785,7 @@ function cloneAuthorization(voiceId: string) {
     schemaVersion: 1 as const,
     voiceId,
     kind: 'cloned' as const,
+    owner: 'rights-owner',
     authorizedBy: 'rights-owner',
     authorizedAt: now,
     consentReference: 'consent://person-a/2026-09-01',

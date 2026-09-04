@@ -1,15 +1,15 @@
 /** Explicit offline integration fixture builder. Never executes during ordinary unit tests. */
 import { access, writeFile, readFile } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname, basename } from 'node:path';
 import { prepared } from '../workflow/fixtures';
 import { resolveManagedMediaTools, executeMediaTool } from '../../src/render/media-tools';
 import { ProviderRegistry } from '../../src/providers/registry';
 import { runNextStage, readWorkflowStatus } from '../../src/workflow/run-stage';
 
-const root = resolve('tests/fixtures/complete-project');
+const root = resolve(process.argv[2] ?? 'tests/fixtures/complete-project');
 try { await access(root); throw new Error('complete-project already exists; preserve it rather than overwrite'); }
 catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
-const f = await prepared(resolve('tests/fixtures'), 'complete-project');
+const f = await prepared(dirname(root), basename(root));
 const tools = await resolveManagedMediaTools();
 const rawPath = join(root, 'fixture-tone.pcm');
 const source = join(root, 'fixture-tone.wav');

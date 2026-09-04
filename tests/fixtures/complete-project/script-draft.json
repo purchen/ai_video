@@ -30,7 +30,9 @@
       "sentenceIds": [
         "sentence-mechanism"
       ],
-      "lenses": []
+      "lenses": [
+        "user-experience"
+      ]
     },
     {
       "type": "counter-evidence",

@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "attemptId": "f9c42599-accb-442e-8f03-4a5c35598c43",
+  "attemptId": "abbdeacc-2cfc-4227-90e3-d0b95ec96956",
   "projectId": "topic-001",
-  "approvedScriptHash": "2a6db5b0e5ff253d4450eb7e831d1ba7727cc181d710408b4785864956411e4a",
+  "approvedScriptHash": "606ee75e2c3eba9de1791915d0f61b9e7280f329a43e8e024c0a39bd773d80ad",
   "providerId": "offline-technical-fixture",
-  "idempotencyKey": "voice:topic-001:2a6db5b0e5ff253d4450eb7e831d1ba7727cc181d710408b4785864956411e4a:f9c42599-accb-442e-8f03-4a5c35598c43",
+  "idempotencyKey": "voice:topic-001:606ee75e2c3eba9de1791915d0f61b9e7280f329a43e8e024c0a39bd773d80ad:abbdeacc-2cfc-4227-90e3-d0b95ec96956",
   "estimate": {
     "providerId": "offline-technical-fixture",
     "currency": "CNY",
@@ -14,5 +14,5 @@
   "authorizedMaxCny": 0,
   "remainingAtAuthorizationCny": 0,
   "budgetScope": "single-process; multi-process requires Task9 project lock",
-  "reservedAt": "2026-09-04T02:30:49.269Z"
+  "reservedAt": "2026-09-04T03:33:03.513Z"
 }

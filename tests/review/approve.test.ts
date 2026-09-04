@@ -52,6 +52,7 @@ const brief: ResearchBrief = {
   conflicts: [],
   unknowns: [],
   candidateLenses: ['user-experience', 'public-service'],
+  chosenLenses: [{ id: 'user-experience', label: '用户体验', text: '服务时间安排', basis: 'everyday-common-sense', sourceIds: [], applicability: '不证明实际效果' }],
   risks: [],
   publicQuestions: [],
   explanationNotes: [],

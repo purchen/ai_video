@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "transactionId": "dbcc9ab7-1e83-4fe2-9534-4294bf06e731",
+  "transactionId": "a4460bd1-8c7d-4914-8b72-5ecb2bd61a90",
   "approvalType": "script",
   "projectId": "mvp-project",
   "artifactName": "approved-script.json",
-  "artifactHash": "2ca44c33ec128a98e84cbfb9569744829ca93cbce756102dc8bada5d4977a877",
-  "projectHash": "d223e8c0b664e210452a7032a9d8742ca43ba71d5a4dd025d062651b8c6e193a",
+  "artifactHash": "16d0a7a3c45accb1a3c956a0a0ba17710b2af6b3355f6a28910c57f6c36e9c92",
+  "projectHash": "cf909cee362f7daa7fc491a60e763c18f81c5128d12230aedbbf43392d59e490",
   "projectSnapshot": {
     "schemaVersion": 1,
     "id": "mvp-project",
     "topic": "原创思考样片：今天没做完，就算失败吗？",
     "workflowState": "SCRIPT_APPROVED",
     "createdAt": "2026-09-04T00:00:00.000Z",
-    "updatedAt": "2026-09-04T02:54:15.225Z",
+    "updatedAt": "2026-09-04T03:29:52.947Z",
     "sources": [
       {
         "schemaVersion": 1,
@@ -62,7 +62,9 @@
             "s4a",
             "s4b"
           ],
-          "lenses": []
+          "lenses": [
+            "daily-self-review"
+          ]
         },
         {
           "type": "counter-evidence",
@@ -135,8 +137,12 @@
         {
           "id": "s4a",
           "text": "我的理解是，清单本来应该帮助选择；如果每一项都同样重要，选择反而被推回给了焦虑。",
-          "type": "opinion",
-          "sourceIds": []
+          "type": "analysis",
+          "sourceIds": [],
+          "priorFactSentenceIds": [
+            "s2a",
+            "s2b"
+          ]
         },
         {
           "id": "s4b",
@@ -187,5 +193,5 @@
     }
   },
   "expectedWorkflowState": "SCRIPT_APPROVED",
-  "committedAt": "2026-09-04T02:54:15.225Z"
+  "committedAt": "2026-09-04T03:29:52.947Z"
 }

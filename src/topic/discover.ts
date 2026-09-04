@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { RawTopic, TopicSourceAdapter } from '../providers/contracts';
 
 export type TopicLane = '社会观察' | '生活态度' | '思考辩论';
+export class InsufficientTopicInputError extends Error {}
 
 export interface TopicScore {
   relevance: number;
@@ -59,7 +60,7 @@ const topicCandidateSchema = z.object({
 
 export const topicCandidatesArtifactSchema = z.object({
   schemaVersion: z.literal(1),
-  candidates: z.array(topicCandidateSchema),
+  candidates: z.array(topicCandidateSchema).min(5).max(10),
 });
 
 interface NormalizedTopic {
@@ -103,6 +104,7 @@ export async function discoverTopics(
     .sort(compareCandidates)
     .slice(0, options.count);
 
+  if (candidates.length < 5) throw new InsufficientTopicInputError(`insufficient evidence/input: at least five unique topic candidates are required; received ${candidates.length}`);
   const artifact = topicCandidatesArtifactSchema.parse({ schemaVersion: 1, candidates });
   await mkdir(dirname(options.outputPath), { recursive: true });
   await writeFile(options.outputPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8');
@@ -129,6 +131,11 @@ function identifyRisks(raw: RawTopic): string[] {
   const text = `${raw.title} ${raw.summary ?? ''} ${raw.publisher}`.toLowerCase();
   const risks: string[] = [];
   if (/未成年|未成年人|儿童|孩子|学生|少年/.test(text)) risks.push('minor');
+  // Conservative keyword triage, not diagnosis, advice or a semantic guarantee.
+  if (/医疗|患者|疾病|糖尿病|癌症|停药|服药|药物|治疗|诊断|疫苗|手术/.test(text)) risks.push('medical');
+  if (/法律|律师|法院|起诉|诉讼|劳动合同|违法|刑事|判决|仲裁/.test(text)) risks.push('legal');
+  if (/投资|股票|基金|证券|理财|期货|加密货币|比特币|炒股/.test(text)) risks.push('investment');
+  if (/公共安全|洪水|洪灾|地震|火灾|消防|爆炸|燃气泄漏|避险|疏散|应急救援/.test(text)) risks.push('public-safety');
   const allegation = /称|爆料|指控|传言|涉嫌|伤害|霸凌/.test(text);
   const supported = /官方|公告|通报|公开数据|法院|警方|调查结果/.test(text);
   if (allegation && !supported) risks.push('unsupported-allegation');
@@ -155,6 +162,7 @@ function scoreTopic(raw: RawTopic, lanes: TopicLane[], now: Date, risks: string[
 function toCandidate(entries: ScoredTopic[]): TopicCandidate {
   const best = [...entries].sort((left, right) => right.score.total - left.score.total || lexical(left.raw.title, right.raw.title))[0];
   const risks = [...new Set(entries.flatMap((entry) => entry.risks))].sort(lexical);
+  const risk = risks.length ? 5 : best.score.risk;
   return {
     title: best.raw.title,
     normalizedTopic: best.normalized.key,
@@ -163,7 +171,7 @@ function toCandidate(entries: ScoredTopic[]): TopicCandidate {
     sourcePublishers: [...new Set(entries.map((entry) => entry.raw.publisher))].sort(lexical),
     risks,
     eligibleForRecommendation: risks.length === 0,
-    score: best.score,
+    score: { ...best.score, risk, total: best.score.total + (best.score.risk - risk) * 0.04 },
   };
 }
 

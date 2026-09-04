@@ -9,12 +9,13 @@ import { ProviderRegistry } from './providers/registry';
 import { JsonFeedTopicAdapter } from './providers/topic/json-feed';
 import { hashCanonicalJson } from './script/hash-script';
 import { ProjectStore } from './store/project-store';
+import { researchLensesSchema } from './research/build-brief';
 import { commandSchema, runStage, runNextStage, readWorkflowStatus, sourcesArtifactSchema, withProjectLock, type StageDependencies } from './workflow/run-stage';
 
 const configSchema = z.object({ schemaVersion: z.literal(1), provider: z.enum(['manual', 'openai']).default('manual'), budgetCny: z.number().finite().nonnegative().optional(), dryRun: z.boolean().default(false), consent: z.object({ actor: z.string().trim().min(1), reference: z.string().trim().min(1) }).optional() }).strict();
 const rawTopicSchema = z.object({ title: z.string().min(1), url: z.string().url(), publisher: z.string().min(1), summary: z.string().optional(), publishedAt: z.string().datetime().optional() });
 const readJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(resolve(path), 'utf8'));
-const flags = new Set(['project', 'projects-dir', 'feed', 'sources', 'draft', 'assets', 'audio', 'rights', 'actor', 'candidate', 'config', 'provider', 'budget-cny', 'approve-cost-cny', 'consent-by', 'consent-reference', 'dry-run']);
+const flags = new Set(['project', 'projects-dir', 'feed', 'sources', 'lenses', 'draft', 'assets', 'audio', 'rights', 'actor', 'candidate', 'config', 'provider', 'budget-cny', 'approve-cost-cny', 'consent-by', 'consent-reference', 'dry-run']);
 export function resolveProjectInput(value: string, projectsDirectory = 'projects'): string {
   if (!value.trim() || value === '.' || value === '..') throw new Error('project must be an explicit directory path or safe project ID');
   if (isAbsolute(value) || /[\\/]/.test(value)) return resolve(value);
@@ -51,7 +52,8 @@ export async function runCli(args: string[], injected: StageDependencies = {}): 
       const payload = await readJson(options.feed); const topics = z.array(rawTopicSchema).parse(payload);
       deps.topicAdapters = [new JsonFeedTopicAdapter({ id: `local-feed:${hashCanonicalJson(topics)}`, url: 'local-input', fetchJson: async () => topics })];
     }
-    if (options.sources) deps.sources = sourcesArtifactSchema.parse(await readJson(options.sources)).sources;
+    if (options.sources) { const input = sourcesArtifactSchema.parse(await readJson(options.sources)); deps.sources = input.sources; deps.lenses = input.lenses; }
+    if (options.lenses) deps.lenses = z.object({ schemaVersion: z.literal(1), lenses: researchLensesSchema }).parse(await readJson(options.lenses)).lenses;
     if (options.draft) { const script = scriptDocumentSchema.parse(await readJson(options.draft)); deps.languageModel = { id: `local-draft:${hashCanonicalJson(script)}`, generate: async () => script }; }
     if (options.assets) deps.assets = assetManifestSchema.parse(await readJson(options.assets));
     if (options.audio) deps.audioPath = resolve(options.audio);

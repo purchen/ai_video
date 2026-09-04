@@ -2,48 +2,49 @@
   "schemaVersion": 1,
   "projectId": "topic-001",
   "sequence": 6,
-  "manifestHash": "4a3d9eaf6e87939531700c59b959bc7a76673c02b92a7fb28e20d509a0df46e5",
+  "manifestHash": "7aeb8b91bbfd1ca84a46df0ee2dc30c5d881423561e826d032a938933304eff7",
   "artifactHashes": {
-    "topic-candidates.json": "e70f43280241adec08c7d00c15e25e2f41956c18b6eaae060c851787227275bf",
-    "sources.json": "0bb58863d48cdc14eb1f22e14b90d4ba076e251d05f12eb022ffe72a285e6ecf",
-    "topic-card.json": "934049999d652b11acff8e4ffb70d6033a95c4042fba459a59f9ef640a7b939f",
-    "topic-approval.commit.json": "b0e7f7bdfebd203604b921808284db0ea2b780fe1dc0b33f8c6858bf43a1bba9",
-    "script-draft.json": "9e0a86e60094542b09bbb856f334d07475911913939dc9733e8c78cf9ab21105",
-    "approved-script.json": "d79c381ddef97e6b65a35f987efd3893ab6e47c86a97b60faa1ffed9801250da",
-    "script-approval.commit.json": "83b338da68d3b4b0fdfdb6528d192602e5e7ff5edd6c6d60c2cbc8acde44c697",
-    "voice/current.json": "9b85dcf1780478564bd601565932c2a6398a202d6993eee0e406e51c72dd9602",
+    "topic-candidates.json": "79077db450b80484b4c16d8a173860df7c35d9ae13cd404b37529f68074d3012",
+    "sources.json": "364e5ee377eb5dfce868f8cfbb265a2511b67e1ee51f491c8e19dfe8803137af",
+    "topic-card.json": "1ea1519698c0fb144c83c0113bdf475167d3ad459ec2132ec693769739686577",
+    "topic-approval.commit.json": "146b7f9b5e5c0b6d430daaad7ae02ab48a5b39dbdf7060ee94d9e04d20910bcb",
+    "script-draft.json": "0bbdcda55bc9b556a9c4ef1a35b6d641b96bf65df486b797b9db6c6d15e5fa19",
+    "approved-script.json": "ad14934b269a34121eccd72f65ae5d74ae17698b6b50197ead10f4a6e8fea202",
+    "script-approval.commit.json": "12cfed27fdb32d534a8a12206b409f0cd609f043fcd350b2f016076032d2d2df",
+    "voice/current.json": "db9eae8109e7e87cd0a1bd33e5156872ca616a28aaa2519d69d08e3a86c64b23",
     "asset-manifest.json": "6fbfec117be02df6db922831b914a9c512c3b1866ed4868d6e9a02c10b139024",
-    "edit-plan.json": "18f6a2efdc05ba36799433cbafae0357ab5aba505eb9a7b70955cac53481415e",
+    "edit-plan.json": "1bf602072e705b00cf0de687b1a266c7010e989c811f1266e67b2643df895128",
     "output/final.mp4": "20a317c6bb47ebcd8c41df7ba346219c16ec16694760b3036fbec49307e0443c"
   },
   "state": "COMPLETE",
   "lastSuccessfulState": "COMPLETE",
   "stage": "finish",
-  "inputHash": "4a31450bbeb2636db9a8457515d20f7500a54beaca46ca9bf6bec0b94e84079e",
-  "attemptId": "f9c42599-accb-442e-8f03-4a5c35598c43",
+  "inputHash": "331234377fa0abbc54149e42272e4eeeee932bda3f12518405dc7fa51aa7bbb8",
+  "attemptId": "abbdeacc-2cfc-4227-90e3-d0b95ec96956",
   "message": "stage completed",
-  "updatedAt": "2026-09-04T02:32:04.756Z",
+  "updatedAt": "2026-09-04T03:34:40.148Z",
+  "voiceId": "alloy",
   "cache": {
     "voice": {
-      "inputHash": "0e23473968a08fd16387dcb03204a88b43612cdceee5850255eeeb3a1ed44b20",
+      "inputHash": "4b65848809f1be6665e80e3b348540e623b1bdb70c3466cc214daba445eb2e7e",
       "state": "VOICE_READY"
     },
     "edit-plan": {
-      "inputHash": "aeee35a4558d8e77a24bfa06e75c207aefe13d3b3568d6117f4babaa9ddf7a2f",
+      "inputHash": "164cfe549c674c738f20bee7febcf0f181b68bdeb20695c525487ba5082bf13d",
       "state": "EDIT_PLAN_READY"
     },
     "render": {
-      "inputHash": "754c6f516599f363a56d95d568cf1d4e7f084392cdcb532a4e87657ce8015713",
+      "inputHash": "83c668c84e4198834f9d5d65bb69e35a26f6e0642e14802fe5f168f56ca9bb3b",
       "state": "RENDERED"
     },
     "qc": {
-      "inputHash": "cbf90ba517780c13a75a7dd98a3d832f923ecfa54d9ff17b1b94e734962ef6fc",
+      "inputHash": "9ed528bacc923f74567c8213f9bc7df299e0233d09746e86dbf213e98571db11",
       "state": "QC_PASSED"
     },
     "finish": {
-      "inputHash": "4a31450bbeb2636db9a8457515d20f7500a54beaca46ca9bf6bec0b94e84079e",
+      "inputHash": "331234377fa0abbc54149e42272e4eeeee932bda3f12518405dc7fa51aa7bbb8",
       "state": "COMPLETE"
     }
   },
-  "hash": "90d1670cb702a936f878d6ade1ead7ca6c5d655da6de60b67444472e5122d4db"
+  "hash": "cef211c6815a9a3f44da8f9fb06487bc201f07d023f8440f14c2ac868c7fc5c6"
 }

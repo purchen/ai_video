@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "transactionId": "88c51f7a-b000-4f71-979c-b76d47e9e304",
+  "transactionId": "79d72b26-a0ac-445f-8bf4-caa147c30cc1",
   "approvalType": "topic",
   "projectId": "mvp-project",
   "artifactName": "topic-card.json",
-  "artifactHash": "c868e3c8022a9e85b2023b5abd33114fa808f341bb28ed97ae2bc4c238e08619",
-  "projectHash": "1cccdb9faa7114404f0bdc0064cebe4c83e59610d9e064c4e8d2e143bcc47fb9",
+  "artifactHash": "97ca38e6c62cc171ded1924d66c50ce8b39a4a5caac872aadb1e16a0d80d058f",
+  "projectHash": "05df38cef0ed5fa607267591990a9ede4a0ba96a172237d08c55b92788066128",
   "projectSnapshot": {
     "schemaVersion": 1,
     "id": "mvp-project",
     "topic": "原创思考样片：今天没做完，就算失败吗？",
     "workflowState": "TOPIC_APPROVED",
     "createdAt": "2026-09-04T00:00:00.000Z",
-    "updatedAt": "2026-09-04T02:54:15.164Z",
+    "updatedAt": "2026-09-04T03:29:52.885Z",
     "sources": [
       {
         "schemaVersion": 1,
@@ -28,5 +28,5 @@
     ]
   },
   "expectedWorkflowState": "TOPIC_APPROVED",
-  "committedAt": "2026-09-04T02:54:15.164Z"
+  "committedAt": "2026-09-04T03:29:52.885Z"
 }

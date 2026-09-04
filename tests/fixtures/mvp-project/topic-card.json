@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "transactionId": "88c51f7a-b000-4f71-979c-b76d47e9e304",
+  "transactionId": "79d72b26-a0ac-445f-8bf4-caa147c30cc1",
   "projectId": "mvp-project",
   "candidateId": "candidate-1",
-  "approvedAt": "2026-09-04T02:54:15.164Z",
+  "approvedAt": "2026-09-04T03:29:52.885Z",
   "approvedBy": "offline-fixture-editor",
   "candidate": {
     "title": "原创思考样片：今天没做完，就算失败吗？",

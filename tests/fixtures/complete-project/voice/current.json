@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "transactionId": "f9c42599-accb-442e-8f03-4a5c35598c43",
+  "transactionId": "abbdeacc-2cfc-4227-90e3-d0b95ec96956",
   "projectId": "topic-001",
-  "approvedScriptHash": "2a6db5b0e5ff253d4450eb7e831d1ba7727cc181d710408b4785864956411e4a",
+  "approvedScriptHash": "606ee75e2c3eba9de1791915d0f61b9e7280f329a43e8e024c0a39bd773d80ad",
   "masterHash": "3fde2f3093b7757414d1175f6dba7b0d20e59c3e91bc4b24eb531cce6b521bbf",
-  "timingsHash": "f38a6e9b9f5e72f64e90d9a802ac5015267c6d4b6b31ce4dc9e173a4c76eac28",
-  "reportHash": "7b4c7636e44d5632f0e0b873c80e736b5ec4358e47609689ffb85b143fa7edea",
-  "chargeHash": "67f4d5c5562125c41bbbafe8188d2e19b95ca0ac2bcfec2237768e4383c55414",
+  "timingsHash": "d8fe51894997d014cc950f4b60619b21c4a5b75ac12e565c8b47769313028a7e",
+  "reportHash": "37493121f4f2e21055ecc7fc7056403dfeef9a1891646a7e1bca98838eb99804",
+  "chargeHash": "9de520aba06439e99c39b64db31adc77244e926b114c8f5698b6172a5bfd9b8c",
   "authorizationReference": "synthetic:voice:alloy",
   "authorizationHash": "1703a17a5fadd94b79519a56de3b4b1c204eb398e9cd827bfcef4e3cade86d06",
-  "committedAt": "2026-09-04T02:30:49.269Z"
+  "committedAt": "2026-09-04T03:33:03.513Z"
 }

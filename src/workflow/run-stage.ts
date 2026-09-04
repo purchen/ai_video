@@ -9,13 +9,13 @@ import { assetManifestSchema, editPlanSchema, writeEditPlan, type AssetManifest 
 import type { LanguageModelAdapter, TopicSourceAdapter, TtsRequest } from '../providers/contracts';
 import { ProviderRegistry } from '../providers/registry';
 import { createManualVoicePackage, importManualVoice, type ManualAudioAuthorization } from '../providers/tts/manual';
-import { buildResearchBrief, writeResearchArtifacts, type ResearchSource } from '../research/build-brief';
+import { buildResearchBrief, writeResearchArtifacts, sourcesArtifactSchema, type ResearchSource, type ResearchLens } from '../research/build-brief';
 import { approveTopic, approveScript, readApprovedTopic, readApprovedScript } from '../review/approve';
 import { buildScript } from '../script/build-script';
 import { hashCanonicalJson } from '../script/hash-script';
 import { scriptNarrationText } from '../script/narration';
 import { ProjectStore } from '../store/project-store';
-import { discoverTopics, topicCandidatesArtifactSchema } from '../topic/discover';
+import { discoverTopics, topicCandidatesArtifactSchema, InsufficientTopicInputError } from '../topic/discover';
 import { generateVoice, readCommittedVoice, readVoiceAttemptAudit } from '../voice/generate-voice';
 import { sha256Bytes } from '../voice/artifacts';
 import { sha256Schema, transactionIdSchema, costRecordSchema } from '../voice/schemas';
@@ -27,7 +27,7 @@ import { inspectQc, persistQc, qcReportSchema, selectedResourcePaths, validateSe
 import { withProjectLock } from './project-lock';
 export { withProjectLock } from './project-lock';
 
-export const sourcesArtifactSchema = z.object({ schemaVersion: z.literal(1), sources: z.array(sourceRecordSchema.extend({ claim: z.object({ key: z.string().min(1), value: z.enum(['affirmed', 'denied']), text: z.string().min(1) }).optional() })) });
+export { sourcesArtifactSchema } from '../research/build-brief';
 export const commandSchema = z.enum(['discover', 'research', 'approve-topic', 'draft-script', 'approve-script', 'voice', 'import-voice', 'edit-plan', 'render', 'qc', 'finish']);
 export type StageCommand = z.infer<typeof commandSchema>;
 const journalBodySchema = z.object({
@@ -46,6 +46,7 @@ export interface StageDependencies extends QcDependencies {
   /** Explicit standard synthetic voice; personalized voices retain the authorized import route. */
   voiceId?: string;
   sources?: ResearchSource[]; topicAdapters?: TopicSourceAdapter[]; now?: Date;
+  lenses?: ResearchLens[];
   languageModel?: LanguageModelAdapter; registry?: ProviderRegistry; converter?: AudioConverter;
   assets?: AssetManifest; actor?: string; candidateId?: string; audioPath?: string;
   authorization?: ManualAudioAuthorization; limitCny?: number; currentCallMaxCny?: number; dryRun?: boolean;
@@ -185,14 +186,14 @@ async function researchContext(store: ProjectStore, preferredId?: string) {
   let selected = candidates.find(c => c.id === (preferredId ?? 'candidate-1'));
   if (!preferredId) { try { const approval = await readApprovedTopic(store); selected = candidates.find(c => c.id === approval.candidateId && hashCanonicalJson(c.candidate) === hashCanonicalJson(approval.candidate)); } catch (e) { const manifest = await store.readJson('project.json', projectManifestSchema); if (!['DISCOVERED', 'RESEARCHED', 'TOPIC_REVIEW_REQUIRED'].includes(manifest.workflowState)) throw e; } }
   if (!selected) throw new Error('selected topic candidate is missing or changed');
-  const { sources } = await store.readJson('sources.json', sourcesArtifactSchema);
-  return { candidates, brief: buildResearchBrief(selected.candidate, sources), sources };
+  const { sources, lenses } = await store.readJson('sources.json', sourcesArtifactSchema);
+  return { candidates, brief: buildResearchBrief(selected.candidate, sources, { lenses }), sources };
 }
 async function stageInput(store: ProjectStore, command: StageCommand, deps: StageDependencies): Promise<string> {
   const all = await artifactHashes(store.root);
   const names: Partial<Record<StageCommand, string[]>> = { discover: [], research: ['topic-candidates.json'], 'approve-topic': ['topic-candidates.json', 'sources.json'], 'draft-script': ['topic-card.json', 'sources.json'], 'approve-script': ['script-draft.json', 'sources.json'], voice: ['approved-script.json'], 'import-voice': ['approved-script.json', 'voice/manual-current.json'], 'edit-plan': ['approved-script.json', 'voice/current.json'], render: ['edit-plan.json', 'voice/current.json', 'asset-manifest.json'], qc: artifactNames, finish: ['output/final.mp4', 'edit-plan.json'] };
   const resources = Object.fromEntries(Object.entries(all).filter(([name]) => !artifactNames.includes(name)));
-  return hashCanonicalJson({ artifacts: Object.fromEntries((names[command] ?? []).map(n => [n, all[n] ?? null])), ...(Object.keys(resources).length && ['render', 'qc'].includes(command) ? { resources } : {}), sources: deps.sources ?? null, assets: deps.assets ?? null, audio: deps.audioPath ? sha256Bytes(await readFile(deps.audioPath)) : null, authorization: deps.authorization ?? null, candidate: deps.candidateId ?? null, model: deps.languageModel?.id ?? null, feeds: command === 'discover' ? deps.topicAdapters?.map(a => a.id) ?? [] : null });
+  return hashCanonicalJson({ artifacts: Object.fromEntries((names[command] ?? []).map(n => [n, all[n] ?? null])), ...(Object.keys(resources).length && ['render', 'qc'].includes(command) ? { resources } : {}), sources: deps.sources ?? null, ...(deps.lenses ? { lenses: deps.lenses } : {}), assets: deps.assets ?? null, audio: deps.audioPath ? sha256Bytes(await readFile(deps.audioPath)) : null, authorization: deps.authorization ?? null, candidate: deps.candidateId ?? null, model: deps.languageModel?.id ?? null, feeds: command === 'discover' ? deps.topicAdapters?.map(a => a.id) ?? [] : null });
 }
 async function persistedVoiceAttempt(store: ProjectStore): Promise<string | undefined> {
   let ids: string[];
@@ -243,8 +244,9 @@ async function executeStage(store: ProjectStore, command: StageCommand, deps: St
         const candidates = (await store.readJson('topic-candidates.json', topicCandidatesArtifactSchema)).candidates;
         const index = Number((deps.candidateId ?? 'candidate-1').replace('candidate-', '')) - 1;
         if (!candidates[index]) throw new Blocked('BLOCKED_EVIDENCE', 'choose an existing --candidate candidate-N');
-        const brief = buildResearchBrief(candidates[index], sources); await writeResearchArtifacts(brief, sources, { outputDirectory: store.root });
-        if (!brief.canDraftScript) throw new Blocked('BLOCKED_EVIDENCE', 'research has unresolved claims or no confirmed facts; correct --sources');
+        const lenses = deps.lenses ?? (await store.readJson('sources.json', sourcesArtifactSchema).catch(() => undefined))?.lenses;
+        const brief = buildResearchBrief(candidates[index], sources, { lenses }); await writeResearchArtifacts(brief, sources, { outputDirectory: store.root });
+        if (!brief.canDraftScript) throw new Blocked('BLOCKED_EVIDENCE', 'research requires confirmed facts, resolved claims and 1–2 explicit lenses; correct --sources/--lenses');
         manifest = projectManifestSchema.parse({ ...manifest, sources });
         await update(manifest.workflowState === 'DISCOVERED' ? transition(transition('DISCOVERED', 'FINISH_DISCOVERY'), 'FINISH_RESEARCH') : transition('RESEARCHED', 'FINISH_RESEARCH')); break;
       }
@@ -279,7 +281,8 @@ async function executeStage(store: ProjectStore, command: StageCommand, deps: St
         if (deps.currentCallMaxCny !== undefined && estimate.amount > deps.currentCallMaxCny) throw new Blocked('BLOCKED_PROVIDER', 'estimate exceeds current-call approval');
         const consent = z.object({ actor: z.string().trim().min(1), reference: z.string().trim().min(1) }).parse(deps.consent);
         await store.appendEvent({ id: randomUUID(), type: 'PROVIDER_CONSENT', occurredAt: new Date().toISOString(), data: { ...consent, providerId: adapter.id, attemptId, estimate, currentCallMaxCny: deps.currentCallMaxCny } });
-        const result = await generateVoice({ store, registry, budgetGuard, attemptId: attemptId!, requestedScriptHash: approved.scriptHash, voice: { voiceId: voiceId!, kind: 'synthetic' }, probe: await audioProbe(deps), converter: deps.converter });
+        const managed = deps.probe && deps.converter ? undefined : await resolveManagedMediaTools();
+        const result = await generateVoice({ store, registry, budgetGuard, attemptId: attemptId!, requestedScriptHash: approved.scriptHash, voice: { voiceId: voiceId!, kind: 'synthetic' }, probe: deps.probe ?? managed!.probe, converter: deps.converter ?? managed!.converter });
         if (result.status !== 'READY') throw new Blocked('BLOCKED_PROVIDER', 'manual narration required; use import-voice');
         await update(transition(manifest.workflowState, 'GENERATE_VOICE')); break;
       }
@@ -315,7 +318,7 @@ async function executeStage(store: ProjectStore, command: StageCommand, deps: St
       try { if (command === 'approve-topic') await readApprovedTopic(store); else await readApprovedScript(store); }
       catch { await store.writeJson('project.json', projectManifestSchema, previousManifest); }
     }
-    const state: WorkflowState = error instanceof Blocked ? error.state : command === 'render' ? 'FAILED_RENDER' : command === 'qc' ? 'FAILED_QC' : ['voice', 'draft-script', 'discover'].includes(command) ? 'BLOCKED_PROVIDER' : command === 'import-voice' || command === 'edit-plan' ? 'BLOCKED_PERMISSION' : 'BLOCKED_EVIDENCE';
+    const state: WorkflowState = error instanceof Blocked ? error.state : error instanceof InsufficientTopicInputError ? 'BLOCKED_EVIDENCE' : command === 'render' ? 'FAILED_RENDER' : command === 'qc' ? 'FAILED_QC' : ['voice', 'draft-script', 'discover'].includes(command) ? 'BLOCKED_PROVIDER' : command === 'import-voice' || command === 'edit-plan' ? 'BLOCKED_PERMISSION' : 'BLOCKED_EVIDENCE';
     await saveJournal(store, old, state, command, inputHash, error instanceof Error ? error.message : String(error), attemptId); deps.print?.(error instanceof Error ? error.message : String(error)); return state;
   }
 }

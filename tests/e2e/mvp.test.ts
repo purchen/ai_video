@@ -16,6 +16,7 @@ it('runs an offline Chinese speech project through both review stops, real rende
   const parent = await mkdtemp(resolve('projects/mvp-e2e/run-'));
   const { store, states } = await buildMvpProject(join(parent, 'mvp-project'));
   console.log(`MVP acceptance output: ${store.root}`);
+  expect(JSON.parse(await readFile(join(store.root, 'topic-candidates.json'), 'utf8')).candidates).toHaveLength(5);
   expect(states).toEqual(['DISCOVERED', 'TOPIC_REVIEW_REQUIRED', 'TOPIC_REVIEW_REQUIRED', 'TOPIC_APPROVED', 'SCRIPT_REVIEW_REQUIRED', 'SCRIPT_REVIEW_REQUIRED', 'SCRIPT_APPROVED', 'VOICE_READY', 'EDIT_PLAN_READY', 'RENDERED', 'QC_PASSED', 'COMPLETE']);
   expect((await readApprovedTopic(store)).candidateId).toBe('candidate-1');
   const approved = await readApprovedScript(store);
@@ -27,6 +28,7 @@ it('runs an offline Chinese speech project through both review stops, real rende
   expect(voice.report.voiceKind).toBe('synthetic');
   expect(voice.report.approvedScriptHash).toBe(approved.scriptHash);
   expect(voice.report.sampleRateHz).toBe(48000);
+  expect(voice.report.integratedLufs).not.toBeNull();
   expect(voice.charge.actual.amount).toBe(0);
   const media = await probeMedia(join(store.root, 'output/final.mp4'));
   expect(media.streams.find(s => s.codec_type === 'video')).toMatchObject({ width: 1080, height: 1920, codec_name: 'h264', avg_frame_rate: '30/1' });

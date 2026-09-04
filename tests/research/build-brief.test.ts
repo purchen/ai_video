@@ -34,6 +34,27 @@ function source(id: string, sourceType: SourceRecord['sourceType'], summary: str
 }
 
 describe('buildResearchBrief', () => {
+  it('does not invent a fixed lens and requires an explicit relevant choice before drafting', () => {
+    const official = { ...source('official', 'official-data', '明确事实'), claim: { key: 'fact', value: 'affirmed' as const, text: '明确事实' } };
+    const brief = buildResearchBrief(topic, [official]);
+    expect(brief.candidateLenses).toEqual([]);
+    expect(brief.canDraftScript).toBe(false);
+    expect(brief.unknowns.join(';')).toMatch(/lens/);
+  });
+  it('retains chosen source and common-sense explanations with applicability, without upgrading them to facts', () => {
+    const lenses = [
+      { id: 'psychology', label: '心理学', text: '解释选择压力', basis: 'source' as const, sourceIds: ['expert'], applicability: '仅作为机制假说，不证明本次动机' },
+      { id: 'daily-choice', label: '生活常识', text: '先区分重要与紧急', basis: 'everyday-common-sense' as const, sourceIds: [], applicability: '仅作思考，不适用于紧急责任' },
+    ];
+    const sources = [source('expert', 'expert-analysis', '选择压力的解释'), { ...source('official', 'official-data', '明确事实'), claim: { key: 'fact', value: 'affirmed' as const, text: '明确事实' } }];
+    const brief = buildResearchBrief(topic, sources, { lenses });
+    expect(brief.candidateLenses).toEqual(['psychology', 'daily-choice']);
+    expect(brief.chosenLenses).toEqual(lenses);
+    expect(brief.confirmedFacts).toHaveLength(1);
+    expect(brief.canDraftScript).toBe(true);
+    expect(() => buildResearchBrief(topic, sources, { lenses: [{ ...lenses[0], sourceIds: ['unknown'] }] })).toThrow(/lens.*source/);
+    expect(() => buildResearchBrief(topic, sources, { lenses: [{ ...lenses[0], applicability: '' }] })).toThrow();
+  });
   it('does not promote comment samples into confirmed facts', () => {
     const commentOnlySource = source('comment-1', 'comment-sample', '有人担心夜校名额不够。');
 

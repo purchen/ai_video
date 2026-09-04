@@ -22,7 +22,7 @@ export function approvedFixture(suffix = ''): ApprovedScript {
     id: `script-001${suffix}`,
     projectId: 'topic-001',
     title: `夜校服务的改变${suffix}`,
-    sections: sectionTypes.map((type) => ({ type, sentenceIds: [`sentence-${type}`], lenses: [] })),
+    sections: sectionTypes.map((type) => ({ type, sentenceIds: [`sentence-${type}`], lenses: type === 'mechanism' ? ['user-experience'] : [] })),
     sentences: sectionTypes.map((type) => ({
       id: `sentence-${type}`,
       text: `${type} 原样文案${suffix}`,

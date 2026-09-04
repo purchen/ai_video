@@ -10,7 +10,7 @@ No live model is required. Supply explicit JSON generated or reviewed by a human
 
 ```powershell
 npm run dev -- discover --project projects/topic-001 --feed inputs/topics.json
-npm run dev -- research --project projects/topic-001 --sources inputs/sources.json --candidate candidate-1
+npm run dev -- research --project projects/topic-001 --sources inputs/sources.json --lenses inputs/lenses.json --candidate candidate-1
 npm run dev -- approve-topic --project projects/topic-001 --candidate candidate-1 --actor editor
 npm run dev -- draft-script --project projects/topic-001 --draft inputs/script.json
 npm run dev -- approve-script --project projects/topic-001 --actor editor
@@ -27,10 +27,34 @@ npm run dev -- status --project projects/topic-001
 
 Inputs:
 
-- `topics.json`: array of `{title,url,publisher,summary?,publishedAt?}`; URLs and timestamps are validated. Candidate IDs are `candidate-1`, `candidate-2`, etc.
+- `topics.json`: array of `{title,url,publisher,summary?,publishedAt?}`; URLs and timestamps are validated. Supply at least five distinct topics after deduplication: fewer produces `BLOCKED_EVIDENCE`, never fabricated filler. Candidate IDs are `candidate-1`, `candidate-2`, etc.
 - `sources.json`: `{schemaVersion:1,sources:[...]}`. Each source uses SourceRecord fields and can add `claim:{key,value:"affirmed"|"denied",text}`. No claim is inferred from a title or summary. See `tests/fixtures/complete-project/sources.json` for a technical sample.
 - `script.json`: ScriptDocument, matching the project manifest ID. Seven sections, evidence bindings, attribution, duration and mechanism lenses are validated. See the technical fixture's `script-draft.json`; it is a test script, not editorially approved publishing copy.
 - `assets.json`: `{schemaVersion:1,projectId,assets:[]}` or permitted AssetRecord entries. Assets and permission/generation references must be project-relative local files.
+
+### Explicit explanation lenses and sentence semantics
+
+Research requires 1–2 human-chosen, relevant explanations; there is no default discipline/template. `--lenses` accepts the following envelope (the same `lenses` array may instead be included in `sources.json`). The validated choices are saved with sources, rendered with their limits in the brief, and reused at both approvals and drafting. Mechanism section `lenses` must contain 1–2 chosen IDs.
+
+```json
+{
+  "schemaVersion": 1,
+  "lenses": [{
+    "id": "daily-self-review",
+    "label": "生活态度与日常复盘",
+    "text": "区分实际进展与未完成的计划，用作解释而非事件证据。",
+    "basis": "everyday-common-sense",
+    "sourceIds": [],
+    "applicability": "不能证明效率因果，也不能代替紧急责任。"
+  }]
+}
+```
+
+A `basis:"source"` choice requires resolvable non-comment `sourceIds`; a common-sense choice must have no factual citations. Relevance and applicability still require editorial judgment; the program does not infer psychological claims.
+
+Sentence types include `fact`, `attribution`, `analysis`, `opinion`, `transition`, plus compatible `hook`/`call-to-action`. An `analysis` sentence needs `priorFactSentenceIds` referencing facts earlier in **section/narration order**. An `attribution` sentence needs `attribution` (speaker), `attributionSourceId`, and that ID in `sourceIds`; its speaker must match the source publisher or an explicitly recorded member of the source's optional `speakers` array. Human review must verify that the text accurately represents what was said. No new type silently relabels approved sentences.
+
+Discovery conservatively flags minors, unsupported allegations, medical, legal, investment and public-safety keywords; flagged candidates are ineligible for automatic recommendation, risk score 5, and remain visible for explicit human review. This is keyword triage, not expert advice or a comprehensive semantic detector: oblique wording can be missed and broad terms can overflag.
 
 ## Original human recording rights
 
@@ -51,7 +75,7 @@ This is a distinct branch, not a cloned voice. Obtain explicit recording rights 
 }
 ```
 
-The import checks the source bytes, requires 55–130 seconds after conversion, commits a 48 kHz PCM WAV, and persists immutable `authorization.json` checked by the official voice reader. Existing `jianying-synthetic`, `cloned`, and `similar-real-person` strict branches remain available; use their truthful source kind and required syntheticIdentifier/owner fields. Never label a procedural tone as a human recording.
+The import checks the source bytes, requires 55–130 seconds after conversion, commits a 48 kHz PCM WAV, and persists immutable `authorization.json` checked by the official voice reader. Final production QC separately requires actual media in the inclusive 60–120 second window. Existing `jianying-synthetic`, `cloned`, and `similar-real-person` strict branches remain available; use their truthful source kind and required syntheticIdentifier/owner fields. All user-authorized manual and direct cloned/similar voices retain the full owner, authorizer, timestamp and consent record, hash-bound to the transaction and revalidated by the official reader. Never label a procedural tone as a human recording.
 
 ## Paid provider policy
 

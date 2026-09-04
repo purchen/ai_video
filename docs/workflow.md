@@ -8,7 +8,7 @@
 
 | 状态 | 下一项工作 |
 | --- | --- |
-| DISCOVERED | 提供明确主张及来源，执行 research |
+| DISCOVERED | 提供明确主张、来源及 1–2 个带适用边界的解释视角，执行 research |
 | TOPIC_REVIEW_REQUIRED | 人工审查证据与选题，再显式 approve-topic |
 | TOPIC_APPROVED | 提供七段式 ScriptDocument，执行 draft-script |
 | SCRIPT_REVIEW_REQUIRED | 人工逐句审稿，再显式 approve-script |

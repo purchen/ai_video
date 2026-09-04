@@ -3,6 +3,7 @@ import { access } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { RenderInternals } from '@remotion/renderer';
 import { z } from 'zod';
+import { createFfmpegAudioAnalyzer } from '../voice/analyze-audio';
 import {
   createFfmpegAudioConverter,
   createFfprobeAudioProbe,
@@ -42,7 +43,7 @@ export async function resolveManagedMediaTools() {
   return {
     ffmpeg,
     ffprobe,
-    probe: createFfprobeAudioProbe(ffprobe),
+    probe: createFfprobeAudioProbe(ffprobe, executeMediaTool, async path => (await createFfmpegAudioAnalyzer(ffmpeg)(path)).integratedLufs),
     converter: createFfmpegAudioConverter(ffmpeg),
   };
 }

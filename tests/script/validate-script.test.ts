@@ -33,6 +33,7 @@ const brief: ResearchBrief = {
   conflicts: [],
   unknowns: [],
   candidateLenses: ['user-experience', 'public-service'],
+  chosenLenses: [{ id: 'user-experience', label: '用户体验', text: '服务时间安排', basis: 'everyday-common-sense', sourceIds: [], applicability: '不证明实际效果' }],
   risks: [],
   publicQuestions: ['名额是否足够？'],
   explanationNotes: [],
@@ -123,6 +124,31 @@ function countWrites(project: ReviewProject): () => number {
 }
 
 describe('validateScript', () => {
+  it('accepts analysis bound to earlier facts and attributed statements bound to a recorded speaker/source', () => {
+    const script = semanticScript();
+    expect(validateScript(script, brief, semanticSources()).errors).toEqual([]);
+    expect(scriptDocumentSchema.parse(script).sentences.find(s => s.type === 'analysis')?.priorFactSentenceIds).toEqual(['sentence-fact-baseline']);
+  });
+  it.each(['missing', 'future', 'not-fact'] as const)('rejects analysis with %s prior-fact binding', mode => {
+    const script = semanticScript();
+    const analysis = script.sentences.find(s => s.type === 'analysis')!;
+    analysis.priorFactSentenceIds = mode === 'missing' ? [] : [mode === 'future' ? 'sentence-judgment' : 'sentence-question-hook'];
+    if (mode === 'future') Object.assign(script.sentences.find(s => s.id === 'sentence-judgment')!, { type: 'fact', sourceIds: ['official-1'], attribution: '官方公告' });
+    expect(validateScript(script, brief, semanticSources()).errors.join(';')).toMatch(/analysis.*prior fact/i);
+  });
+  it('uses narration section order even when the sentence storage array is shuffled', () => {
+    const script = semanticScript(); script.sentences.reverse();
+    expect(validateScript(script, brief, semanticSources()).errors).toEqual([]);
+  });
+  it.each(['missing-source', 'wrong-speaker'] as const)('rejects attribution with %s', mode => {
+    const script = semanticScript();
+    const sentence = script.sentences.find(s => s.type === 'attribution')!;
+    if (mode === 'missing-source') sentence.attributionSourceId = 'unknown'; else sentence.attribution = 'unrecorded person';
+    expect(validateScript(script, brief, semanticSources()).errors.join(';')).toMatch(/attribution.*source|attribution.*speaker/i);
+  });
+  it('requires at least one chosen mechanism lens', () => {
+    expect(validateScript({ ...validScript, sections: validScript.sections.map(s => ({ ...s, lenses: [] })) }, brief).errors.join(';')).toMatch(/at least one.*lens/);
+  });
   it('rejects fact sentences without source ids', () => {
     const result = validateScript({
       ...validScript,
@@ -190,6 +216,16 @@ describe('validateScript', () => {
     expect(validateScript(validScript).errors).toContain('fact evidence context is required');
   });
 });
+
+function semanticSources() {
+  return [{ schemaVersion: 1 as const, id: 'official-1', url: 'https://example.com/official', title: 'Notice', publisher: '官方公告', summary: '报名延长', sourceType: 'official-data' as const, evidenceWeight: 'high' as const, capturedAt: createdAt }];
+}
+function semanticScript() {
+  return { ...validScript, sentences: validScript.sentences.map(s => ({ ...s,
+    ...(s.id === 'sentence-mechanism' ? { type: 'analysis', priorFactSentenceIds: ['sentence-fact-baseline'] } : {}),
+    ...(s.id === 'sentence-strong-evidence' ? { type: 'attribution', attribution: '官方公告', attributionSourceId: 'official-1', sourceIds: ['official-1'] } : {}),
+  })) };
+}
 
 describe('buildScript', () => {
   it('does not call the model or write files before topic approval', async () => {

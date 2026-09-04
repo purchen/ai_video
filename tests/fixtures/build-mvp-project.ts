@@ -12,7 +12,7 @@ import { readCommittedVoice } from '../../src/voice/generate-voice';
 import { ProjectStore } from '../../src/store/project-store';
 import { executeMediaTool, resolveManagedMediaTools } from '../../src/render/media-tools';
 import { runNextStage, runStage, type StageCommand, type StageDependencies } from '../../src/workflow/run-stage';
-import { fixtureDate, fixtureScript, fixtureSource } from './mvp-input';
+import { fixtureDate, fixtureScript, fixtureSource, fixtureLenses } from './mvp-input';
 
 export const mvpSpeechProvenanceSchema = z.object({
   schemaVersion: z.literal(1),
@@ -56,7 +56,7 @@ export async function buildMvpProject(target: string) {
       return { ...request, audioPath: request.outputPath, durationMs: audio.durationMs, providerId: cost.providerId, model: provenance.model, cost };
     },
   }]);
-  const deps: StageDependencies = { registry, voiceId: provenance.voiceId, probe: tools.probe, converter: tools.converter, limitCny: 0, consent: { actor: 'offline-fixture-editor', reference: 'local-synthetic-test-only-no-publish' }, print: console.log };
+  const deps: StageDependencies = { registry, voiceId: provenance.voiceId, limitCny: 0, consent: { actor: 'offline-fixture-editor', reference: 'local-synthetic-test-only-no-publish' }, print: console.log };
   const states: string[] = [];
   async function stage(command: StageCommand, expected: string, extra: StageDependencies = {}) {
     const actual = await runStage(root, command, { ...deps, ...extra }); states.push(actual);
@@ -66,8 +66,8 @@ export async function buildMvpProject(target: string) {
     const actual = await runNextStage(root, deps); states.push(actual);
     if (actual !== expected) throw new Error(`next: expected ${expected}, got ${actual}`);
   }
-  await stage('discover', 'DISCOVERED', { now: new Date(fixtureDate), topicAdapters: [{ id: 'original-synthetic-topic-feed', fetch: async () => [{ title: fixtureScript.title, url: fixtureSource.url, publisher: fixtureSource.publisher, summary: fixtureSource.summary, publishedAt: fixtureDate }] }] });
-  await stage('research', 'TOPIC_REVIEW_REQUIRED', { sources: [fixtureSource], candidateId: 'candidate-1' });
+  await stage('discover', 'DISCOVERED', { now: new Date(fixtureDate), topicAdapters: [{ id: 'original-synthetic-topic-feed', fetch: async () => [{ title: fixtureScript.title, url: fixtureSource.url, publisher: fixtureSource.publisher, summary: fixtureSource.summary, publishedAt: fixtureDate }, ...['下班散步', '周末阅读', '整理桌面', '记录小事'].map((name, i) => ({ title: `原创虚构候选：${name}`, url: `https://example.invalid/synthetic-topic-${i}`, publisher: '合成测试数据（非新闻）', publishedAt: fixtureDate }))] }] });
+  await stage('research', 'TOPIC_REVIEW_REQUIRED', { sources: [fixtureSource], lenses: fixtureLenses, candidateId: 'candidate-1' });
   await next('TOPIC_REVIEW_REQUIRED'); // Stops; never auto-approves.
   await stage('approve-topic', 'TOPIC_APPROVED', { actor: 'offline-fixture-editor', candidateId: 'candidate-1' });
   await stage('draft-script', 'SCRIPT_REVIEW_REQUIRED', { languageModel: { id: 'original-fixture-script', generate: async () => fixtureScript } });

@@ -322,7 +322,7 @@ async function importManualVoiceExclusively(request: ImportManualVoiceRequest): 
     await writeJson(io, timingsPath, timings);
     await writeJson(io, reportPath, report);
     await writeJson(io, chargePath, charge);
-    if (rights.sourceKind === 'original-human') await writeJson(io, join(directory, 'authorization.json'), rights);
+    if (rights.authorization === 'user-authorized') await writeJson(io, join(directory, 'authorization.json'), rights);
     const marker = voiceCommitMarkerSchema.parse({
       schemaVersion: 1,
       transactionId,

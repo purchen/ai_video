@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "attemptId": "f9c42599-accb-442e-8f03-4a5c35598c43",
+  "attemptId": "abbdeacc-2cfc-4227-90e3-d0b95ec96956",
   "actual": {
     "providerId": "offline-technical-fixture",
     "currency": "CNY",
@@ -8,5 +8,5 @@
     "basis": "local procedural test tone; no speech synthesis or external call"
   },
   "withinAuthorization": true,
-  "settledAt": "2026-09-04T02:30:49.269Z"
+  "settledAt": "2026-09-04T03:33:03.513Z"
 }

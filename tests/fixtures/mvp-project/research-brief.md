@@ -13,7 +13,7 @@ Can draft script: yes
 - None
 
 ## Candidate lenses
-- 围绕“原创思考样片今天没做完就算失败吗的原创虚构例子第一晚列十项任务只完成两项第二晚只选，究竟改变了什么？”梳理用户体验与公共服务供给。
+- daily-self-review (生活态度与日常复盘): 区分完成的进展和未完成计划，以虚构日记讨论如何评价一天。 [everyday-common-sense; ]; applicability: 非实证心理学结论，不证明效率因果，也不能替代紧急责任与期限。
 
 ## Risks
 - None

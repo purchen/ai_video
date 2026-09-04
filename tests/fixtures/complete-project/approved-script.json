@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "transactionId": "a0b6b72b-e5a0-4155-bfa0-d950abb4c17c",
-  "approvedAt": "2026-09-04T02:30:49.053Z",
+  "transactionId": "b7da2013-fc18-49fa-8254-5f3825c8c199",
+  "approvedAt": "2026-09-04T03:33:03.276Z",
   "approvedBy": "fixture-editor",
-  "scriptHash": "2a6db5b0e5ff253d4450eb7e831d1ba7727cc181d710408b4785864956411e4a",
+  "scriptHash": "606ee75e2c3eba9de1791915d0f61b9e7280f329a43e8e024c0a39bd773d80ad",
   "script": {
     "schemaVersion": 1,
     "id": "script-001",
@@ -36,7 +36,9 @@
         "sentenceIds": [
           "sentence-mechanism"
         ],
-        "lenses": []
+        "lenses": [
+          "user-experience"
+        ]
       },
       {
         "type": "counter-evidence",

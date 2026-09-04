@@ -4,7 +4,7 @@
   "topic": "原创思考样片：今天没做完，就算失败吗？",
   "workflowState": "COMPLETE",
   "createdAt": "2026-09-04T00:00:00.000Z",
-  "updatedAt": "2026-09-04T02:56:45.659Z",
+  "updatedAt": "2026-09-04T03:32:33.952Z",
   "sources": [
     {
       "schemaVersion": 1,
@@ -54,7 +54,9 @@
           "s4a",
           "s4b"
         ],
-        "lenses": []
+        "lenses": [
+          "daily-self-review"
+        ]
       },
       {
         "type": "counter-evidence",
@@ -127,8 +129,12 @@
       {
         "id": "s4a",
         "text": "我的理解是，清单本来应该帮助选择；如果每一项都同样重要，选择反而被推回给了焦虑。",
-        "type": "opinion",
-        "sourceIds": []
+        "type": "analysis",
+        "sourceIds": [],
+        "priorFactSentenceIds": [
+          "s2a",
+          "s2b"
+        ]
       },
       {
         "id": "s4b",

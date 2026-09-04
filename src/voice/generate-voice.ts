@@ -167,12 +167,13 @@ async function generateVoiceExclusively(request: GenerateVoiceRequest): Promise<
 
   const timestamp = now(request);
   const auditDirectory = voicePath(request.store, 'audit', attemptId);
+  const estimate = parseProviderCost(await adapter.estimate(ttsRequest), adapter.id, 'estimate');
+  const budgetAuthorization = request.budgetGuard.reserve(attemptId, estimate);
+  // A denied preflight never creates a durable paid-attempt identity. Once an
+  // audit exists, incomplete/ambiguous calls retain the strict recovery rules.
   await io.mkdir(voiceRoot(request.store));
   await io.mkdir(voicePath(request.store, 'audit'));
   await io.mkdir(auditDirectory);
-
-  const estimate = parseProviderCost(await adapter.estimate(ttsRequest), adapter.id, 'estimate');
-  const budgetAuthorization = request.budgetGuard.reserve(attemptId, estimate);
   const attempt = existing?.attempt ?? voiceAttemptAuditSchema.parse({
     schemaVersion: 1,
     attemptId,
@@ -270,6 +271,7 @@ async function generateVoiceExclusively(request: GenerateVoiceRequest): Promise<
     await writeJson(io, timingsPath, timings);
     await writeJson(io, reportPath, report);
     await writeJson(io, chargePath, charge);
+    if (voice.authorization) await writeJson(io, join(transactionDirectory, 'authorization.json'), voice.authorization);
     const marker = await createMarker(
       io,
       approvedScript.script.projectId,
@@ -409,10 +411,13 @@ async function verifyTransaction(
     const timings = wordTimingsSchema.parse(await readJson(artifactIo, timingsPath));
     const report = voiceReportSchema.parse(await readJson(artifactIo, reportPath));
     const charge = voiceChargeSchema.parse(await readJson(artifactIo, chargePath));
-    if (report.voiceKind === 'original-human') {
-      const rights = manualAudioAuthorizationSchema.parse(await readJson(artifactIo, join(directory, 'authorization.json')));
-      if (rights.sourceKind !== 'original-human' || rights.voiceId !== report.voiceId
-        || rights.consentReference !== report.authorizationReference || hashCanonicalJson(rights) !== marker.authorizationHash) throw new Error('original recording rights binding mismatch');
+    if (report.authorization === 'user-authorized') {
+      const record = await readJson(artifactIo, join(directory, 'authorization.json'));
+      const manual = manualAudioAuthorizationSchema.safeParse(record);
+      const rights = manual.success ? manual.data : voiceAuthorizationSchema.parse(record);
+      const kind = 'sourceKind' in rights ? rights.voiceKind : rights.kind;
+      if (kind !== report.voiceKind || rights.voiceId !== report.voiceId
+        || rights.consentReference !== report.authorizationReference || hashCanonicalJson(rights) !== marker.authorizationHash) throw new Error('voice rights binding mismatch');
     }
     const hashesMatch = marker.masterHash === await sha256File(artifactIo, masterPath)
       && marker.timingsHash === await sha256File(artifactIo, timingsPath)

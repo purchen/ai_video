@@ -4,7 +4,7 @@
   "topic": "夜校报名延长",
   "workflowState": "COMPLETE",
   "createdAt": "2026-09-01T00:00:00.000Z",
-  "updatedAt": "2026-09-04T02:32:04.731Z",
+  "updatedAt": "2026-09-04T03:34:40.127Z",
   "sources": [
     {
       "schemaVersion": 1,
@@ -50,7 +50,9 @@
         "sentenceIds": [
           "sentence-mechanism"
         ],
-        "lenses": []
+        "lenses": [
+          "user-experience"
+        ]
       },
       {
         "type": "counter-evidence",

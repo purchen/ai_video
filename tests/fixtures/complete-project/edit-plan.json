@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "projectId": "topic-001",
-  "approvedScriptHash": "2a6db5b0e5ff253d4450eb7e831d1ba7727cc181d710408b4785864956411e4a",
-  "voiceReportHash": "fa985a3b6a7346cf945f60c0212d82cab64cd14d21742c52f5bb2351c41ccb50",
+  "approvedScriptHash": "606ee75e2c3eba9de1791915d0f61b9e7280f329a43e8e024c0a39bd773d80ad",
+  "voiceReportHash": "e3127dca542d82d29a4c66e48333ac20c768299ff8db293e86dc6ca3aed2345a",
   "voice": {
-    "masterPath": "voice/transactions/f9c42599-accb-442e-8f03-4a5c35598c43/master.wav",
+    "masterPath": "voice/transactions/abbdeacc-2cfc-4227-90e3-d0b95ec96956/master.wav",
     "durationMs": 60000
   },
   "scenes": [

@@ -12,6 +12,16 @@ Install locked dependencies with `npm ci`. Provision the browser once, with norm
 
 Remotion's reduced FFmpeg supports the tested PCM WAV resampling, PNG decoding/encoding, H.264 and AAC operations; it does **not** provide the rawvideo demuxer. Do not infer full system FFmpeg feature coverage.
 
+The default workflow now resolves both probe and converter when omitted, including direct provider WAV output at other sample rates. Managed probing also records measured integrated LUFS. Lower-level explicitly injected probes can still report unknown loudness; production QC never interprets unknown as a pass.
+
+## Measured production audio QC
+
+Production QC checks actual final media duration (inclusive 60–120 seconds), narration master and final mix. The pinned binary supplies `loudnorm` **input** LUFS/true peak and `silencedetect`; no normalized output is substituted into the project. Measurements are retained in `reports/qc.json`. Near-full-scale true peak (at least −0.1 dBTP), unmeasurable/silent audio, integrated loudness below −45 LUFS, or a ≥2-second segment below −50 dB fails with an actionable error. These conservative thresholds detect technical hazards, not every historical distortion or subjective problem.
+
+When music is selected, QC measures its effective stem using the actual gain, loop and full narration duration, then requires its integrated loudness to be at least 16 dB below narration. An insufficient ratio requires lower music gain/re-export or removal; a raw −16 dB gain alone does not establish that ratio. No automatic mixer is added. Integrated measurements do not guarantee every instant's masking behavior: human listening remains mandatory.
+
+Every report explicitly includes `manualChecks: intelligibility / REQUIRED`. Technical `QC_PASSED`/`COMPLETE` does not claim listening, exact spoken words, word-level synchronization or publication approval. No ASR is used. The six-second renderer smoke remains separate and is not eligible for production QC. Ordinary tests serialize files, use 30-second bounded integration timeouts, and retain the existing 180/300-second explicit real-render bounds.
+
 ## Media and layout contract
 
 All selected media and permission/generation references must exist inside the project after resolving symlinks/junctions. Authorized clips support local MP4/WebM/MOV. The single video stream itself must cover the scene duration, using stream `duration` or `duration_ts × time_base`; unknown duration or multiple video streams are rejected. A longer audio/container duration never supplies missing visual coverage. Clip audio is muted. AI-abstract visuals support local static PNG/JPEG/WebP; animated PNG/WebP is rejected. Ambient music supports local WAV/MP3/M4A, loops, and uses the plan's gain of at most −16 dB. Unsupported formats fail before rendering, rather than being omitted. Permission/provenance records remain bound to their selected asset IDs.

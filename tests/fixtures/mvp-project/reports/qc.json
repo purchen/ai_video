@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "checkedAt": "2026-09-04T02:56:45.155Z",
+  "checkedAt": "2026-09-04T03:32:24.323Z",
   "status": "QC_PASSED",
   "errors": [],
   "artifacts": [
@@ -13,16 +13,35 @@
     "edit-plan.json",
     "voice/current.json",
     "output/final.mp4",
-    "E:\\MyProject\\视屏号设计\\.worktrees\\short-video-mvp\\tests\\fixtures\\mvp-project\\voice\\transactions\\75c9c785-1282-4090-bde3-f130753c26d1\\master.wav"
+    "E:\\MyProject\\视屏号设计\\.worktrees\\short-video-mvp\\projects\\final-fix-mvp-20260904\\voice\\transactions\\cfb77464-15f5-4583-8fa1-c5aa9a9aa73e\\master.wav"
   ],
   "inputHashes": {
-    "topic-card.json": "5fd876c6b2e3906d70c7eb23cbe173f4db06b7dde6ef07d7509d391d8af21c1c",
-    "topic-approval.commit.json": "4899b1ecc3e3d68737df33f236a71f3018faed3cd792525f8980a4e89c92ed88",
-    "approved-script.json": "77d4dc296be804d9c69cbc6641af886b80459a8c3a85e85c91c3c79eaef768de",
-    "script-approval.commit.json": "7437ba75b869c6f3512a1768ac33cd810f768b96f331dc5d5f27fcbe1569b7ea",
+    "topic-card.json": "d25036c0c874027cc8b4f353e2a6d83e63e95c3cbc190d2b7fbc2ab44994209f",
+    "topic-approval.commit.json": "e325f130f4203c35c45dcd58d61b4eed21f9e3172a1bdea2da17dea6fa116086",
+    "approved-script.json": "8233fd5b8baa549ebc0feba3768fe113ae794e9c6516e62f15109d1555a50efc",
+    "script-approval.commit.json": "44f59a4eaf9c6b49cad9af4d1fbd7b0616b8da45837f196a138ee117c5f163f2",
     "asset-manifest.json": "214d39f3de7b7cd95eabb53341c638e96f7dbf6623769960bde91f883563f025",
-    "edit-plan.json": "68458a0978f260a9d48153c3b2ca401fa5c4a2015ff73e567083c7e1615d6c4e",
-    "voice/current.json": "e79803f6dc8cc6b873928136a67eac331697aa764e38a4ff118fa59053403333",
+    "edit-plan.json": "cf4dff8d987f682f589b5cbb139b458ff8d5724bf7bcc7de8ba9cde4c9b46b6b",
+    "voice/current.json": "ddbf7f39b152a39e41f7384e5791275ec35bcfb05ff6760633bf6f83df989345",
     "output/final.mp4": "eab69081f5c14599dbd8b94a905f9ae72cec34e2b94693a9b578c00b83a4c0c5"
-  }
+  },
+  "audioMeasurements": {
+    "narration": {
+      "integratedLufs": -23.87,
+      "truePeakDbtp": -0.71,
+      "silenceSegments": []
+    },
+    "finalMix": {
+      "integratedLufs": -23.89,
+      "truePeakDbtp": -3.75,
+      "silenceSegments": []
+    }
+  },
+  "manualChecks": [
+    {
+      "check": "intelligibility",
+      "status": "REQUIRED",
+      "message": "Human listening review of narration intelligibility, exact words and caption timing is required before publication; no ASR or listening pass is claimed."
+    }
+  ]
 }

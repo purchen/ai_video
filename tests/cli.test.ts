@@ -3,10 +3,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { runCli } from '../src/cli';
-import { prepared, sources, probe, media } from './workflow/fixtures';
+import { prepared, sources, lenses, probe, media, analyzeAudio } from './workflow/fixtures';
 import { sha256Bytes } from '../src/voice/artifacts';
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(p => rm(p, { recursive: true, force: true }))); });
+it('routes insufficient discovery input to evidence blocked rather than a provider failure', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cli-discovery-')); roots.push(root);
+  const feed = join(root, 'feed.json'); await writeFile(feed, '[]'); const output: string[] = [];
+  expect(await runCli(['discover', '--project', join(root, 'project'), '--feed', feed], { print: line => output.push(line) })).toBe(2);
+  expect(output).toContain('BLOCKED_EVIDENCE');
+});
 it('reports persisted path-form status and distinguishes manual action from errors', async () => {
   const f = await prepared(); roots.push(f.parent); const output: string[] = [];
   expect(await runCli(['status', '--project', f.store.root], { print: s => output.push(s) })).toBe(0);
@@ -18,7 +24,7 @@ it('routes authorized human import, edit plan, render, QC and finish through dur
   const f = await prepared(); roots.push(f.parent);
   const audio = join(f.parent, 'original.wav'); await writeFile(audio, 'original test audio bytes');
   const rights = join(f.parent, 'rights.json'); await writeFile(rights, JSON.stringify({ schemaVersion: 1, sourceKind: 'original-human', voiceKind: 'original-human', authorization: 'user-authorized', voiceId: 'owner', owner: 'owner', authorizedBy: 'owner', authorizedAt: '2026-09-04T00:00:00.000Z', consentReference: 'test permission', sourceAudioHash: sha256Bytes(await readFile(audio)) }));
-  const deps = { print: () => {}, probe, probeMedia: async () => media, converter: { convertToWav48k: async (input: string, output: string) => { await writeFile(output, await readFile(input)); } }, render: async (root: string) => { await mkdir(join(root, 'output')); const outputPath = join(root, 'output/final.mp4'); await writeFile(outputPath, 'offline render test double'); return { outputPath, durationMs: 60000 }; } };
+  const deps = { print: () => {}, probe, analyzeAudio, probeMedia: async () => media, converter: { convertToWav48k: async (input: string, output: string) => { await writeFile(output, await readFile(input)); } }, render: async (root: string) => { await mkdir(join(root, 'output')); const outputPath = join(root, 'output/final.mp4'); await writeFile(outputPath, 'offline render test double'); return { outputPath, durationMs: 60000 }; } };
   const projectArgs = ['--project', f.store.root];
   expect(await runCli(['voice', ...projectArgs], deps)).toBe(2);
   expect(await runCli(['import-voice', ...projectArgs, '--audio', audio, '--rights', rights], deps)).toBe(0);
@@ -27,14 +33,18 @@ it('routes authorized human import, edit plan, render, QC and finish through dur
 });
 it('routes discover/research/topic approval/draft through real modules and local inputs', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cli-')); roots.push(root); const project = join(root, 'project');
-  const feed = join(root, 'feed.json'); await writeFile(feed, JSON.stringify([{ title: '城市夜校报名延长', url: 'https://example.com/official', publisher: '官方', summary: '官方公告确认报名服务延长。' }]));
+  const fillers = ['整理相册', '窗边阅读', '走路放松', '整理书桌'].map((title, i) => ({ title: `合成候选：${title}`, url: `https://example.com/fixture/${i}`, publisher: 'synthetic' }));
+  const feed = join(root, 'feed.json'); await writeFile(feed, JSON.stringify([{ title: '城市夜校报名延长', url: 'https://example.com/official', publisher: '官方', summary: '官方公告确认报名服务延长。' }, ...fillers]));
   const print = () => {};
   expect(await runCli(['discover', '--project', project, '--feed', feed], { print })).toBe(0);
-  await writeFile(feed, JSON.stringify([{ title: '公共图书馆夜读延长', url: 'https://example.com/official', publisher: '官方' }]));
+  await writeFile(feed, JSON.stringify([{ title: '公共图书馆夜读延长', url: 'https://example.com/official', publisher: '官方', summary: '官方公告延长服务' }, ...fillers]));
   expect(await runCli(['discover', '--project', project, '--feed', feed], { print })).toBe(0);
   expect(JSON.parse(await readFile(join(project, 'topic-candidates.json'), 'utf8')).candidates[0].title).toBe('公共图书馆夜读延长');
   const input = join(root, 'sources.json'); await writeFile(input, JSON.stringify({ schemaVersion: 1, sources }));
-  expect(await runCli(['research', '--project', project, '--sources', input], { print })).toBe(0);
+  expect(await runCli(['research', '--project', project, '--sources', input], { print })).toBe(2);
+  const lensPath = join(root, 'lenses.json'); await writeFile(lensPath, JSON.stringify({ schemaVersion: 1, lenses }));
+  expect(await runCli(['research', '--project', project, '--sources', input, '--lenses', lensPath], { print })).toBe(0);
+  expect(JSON.parse(await readFile(join(project, 'sources.json'), 'utf8')).lenses).toEqual(lenses);
   expect(await runCli(['draft-script', '--project', project], { print })).toBe(1);
   expect(await runCli(['approve-topic', '--project', project, '--candidate', 'candidate-1', '--actor', 'editor'], { print })).toBe(0);
   expect(await runCli(['draft-script', '--project', project], { print })).toBe(2);
