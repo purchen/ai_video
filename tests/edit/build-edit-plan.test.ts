@@ -60,6 +60,24 @@ describe('edit decisions', () => {
     f.voiceReport.approvedScriptHash = f.approvedScript.scriptHash;
     f.timings.approvedScriptHash = f.approvedScript.scriptHash;
     const plan = buildEditPlan({ ...f, sources: [...f.sources, { ...f.sources[0], id: 'comment-1', sourceType: 'comment-sample', evidenceWeight: 'low' }] });
-    expect(plan.scenes[0].visual).toMatchObject({ kind: 'kinetic-text', publicQuestionLabel: '公众疑问（非事实证据）', text: '你怎么看这件事情？' });
+    expect(plan.scenes[0]).toMatchObject({ publicQuestionLabel: '公众疑问（非事实证据）', visual: { kind: 'kinetic-text', text: '你怎么看这件事情？' } });
+  });
+  it.each([
+    ['clip', false, 3, 'authorized-clip'],
+    ['generated-abstract', false, 3, 'ai-abstract'],
+    ['clip', true, 3, 'authorized-clip'],
+    ['clip', true, 4, 'source-card'],
+  ] as const)('preserves scene-level comment labels with %s, mixed sources %s, scene %s', (kind, mixed, index, expectedVisual) => {
+    const f = fixture();
+    const sentence = f.approvedScript.script.sentences[index];
+    sentence.sourceIds = mixed ? ['comment-1', 'official-1'] : ['comment-1'];
+    f.approvedScript.scriptHash = hashScript(f.approvedScript.script);
+    f.voiceReport.approvedScriptHash = f.approvedScript.scriptHash;
+    f.timings.approvedScriptHash = f.approvedScript.scriptHash;
+    const asset = { ...permitted, kind, sentenceIds: [sentence.id], ...(kind === 'generated-abstract' ? { generationRecord: { schemaVersion: 1 as const, assetId: 'clip-1', provider: 'offline', reference: 'generation/abstract.json' } } : {}) };
+    const plan = buildEditPlan({ ...f, sources: [...f.sources, { ...f.sources[0], id: 'comment-1', sourceType: 'comment-sample', evidenceWeight: 'low' }], assets: { ...f.assets, assets: [asset] } });
+    expect(plan.scenes[index]).toMatchObject({ publicQuestionLabel: '公众疑问（非事实证据）', visual: { kind: expectedVisual } });
+    if (expectedVisual === 'source-card') expect(plan.scenes[index].visual).toMatchObject({ sources: [{ id: 'official-1' }] });
+    expect(plan.scenes[1]).not.toHaveProperty('publicQuestionLabel');
   });
 });

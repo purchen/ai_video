@@ -33,7 +33,7 @@ const provenanceSchema = z.object({ assetId: z.string().min(1), path: projectRel
   if (a.assetId !== a.permissionRecord.assetId || (a.generationRecord && a.assetId !== a.generationRecord.assetId)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'asset provenance binding mismatch' });
 });
 const visualSchema = z.union([
-  z.object({ kind: z.literal('kinetic-text'), text: z.string().min(1), publicQuestionLabel: z.literal('公众疑问（非事实证据）').optional() }),
+  z.object({ kind: z.literal('kinetic-text'), text: z.string().min(1) }),
   z.object({ kind: z.literal('source-card'), sources: z.array(sourceRecordSchema.refine(s => s.sourceType !== 'comment-sample', 'comments are not factual sources')).min(1) }),
   z.object({ kind: z.literal('authorized-clip'), asset: provenanceSchema }),
   z.object({ kind: z.literal('ai-abstract'), asset: provenanceSchema.refine(a => !!a.generationRecord, 'abstract asset requires generation record') }),
@@ -41,7 +41,7 @@ const visualSchema = z.union([
 export const editPlanSchema = z.object({
   schemaVersion: z.literal(1), projectId: z.string().min(1), approvedScriptHash: sha256Schema, voiceReportHash: sha256Schema,
   voice: z.object({ masterPath: projectRelativePathSchema, durationMs: z.number().int().positive() }),
-  scenes: z.array(z.object({ id: z.string().min(1), section: scriptSectionTypeSchema, scriptSentenceIds: z.array(z.string().min(1)).min(1), startMs: z.number().int().nonnegative(), endMs: z.number().int().positive(), visual: visualSchema })).min(1),
+  scenes: z.array(z.object({ id: z.string().min(1), section: scriptSectionTypeSchema, scriptSentenceIds: z.array(z.string().min(1)).min(1), startMs: z.number().int().nonnegative(), endMs: z.number().int().positive(), publicQuestionLabel: z.literal('公众疑问（非事实证据）').optional(), visual: visualSchema })).min(1),
   captions: z.array(captionCueSchema).min(1),
   music: z.union([z.object({ mode: z.literal('none') }), z.object({ mode: z.literal('ambient'), relativeGainDb: z.number().finite().max(-16), asset: provenanceSchema })]),
   warnings: z.array(z.string()),
@@ -85,7 +85,7 @@ export function buildEditPlan(input: BuildEditPlanInput): EditPlan {
     const sentence = approved.script.sentences.find(s => s.id === id)!;
     const cues = captions.filter(c => c.scriptSentenceId === id);
     const hasComment = sentence.sourceIds.some(sourceId => sources.some(s => s.id === sourceId && s.sourceType === 'comment-sample'));
-    let visual: z.infer<typeof visualSchema> = { kind: 'kinetic-text', text: sentence.text, ...(hasComment ? { publicQuestionLabel: '公众疑问（非事实证据）' as const } : {}) };
+    let visual: z.infer<typeof visualSchema> = { kind: 'kinetic-text', text: sentence.text };
     const needsSource = sentence.type === 'fact' || section.type === 'strong-evidence' || section.type === 'counter-evidence';
     const boundSources = sentence.sourceIds.map(sourceId => sources.find(s => s.id === sourceId)).filter((s): s is SourceRecord => !!s && s.sourceType !== 'comment-sample');
     if (needsSource) {
@@ -97,7 +97,8 @@ export function buildEditPlan(input: BuildEditPlanInput): EditPlan {
       if (clip) visual = { kind: 'authorized-clip', asset: provenance(clip) };
       else if (sentence.type === 'transition' && abstract) visual = { kind: 'ai-abstract', asset: provenance(abstract) };
     }
-    return { id: `scene-${id}`, section: section.type, scriptSentenceIds: [id], startMs: cues[0].startMs, endMs: cues[cues.length - 1].endMs, visual };
+    // Comment context belongs to the whole scene, independent of its chosen visual.
+    return { id: `scene-${id}`, section: section.type, scriptSentenceIds: [id], startMs: cues[0].startMs, endMs: cues[cues.length - 1].endMs, ...(hasComment ? { publicQuestionLabel: '公众疑问（非事实证据）' as const } : {}), visual };
   }));
   const policy = z.object({ tone: z.enum(['serious', 'neutral']), informationDensity: z.enum(['dense', 'normal']) }).parse(input.policy ?? { tone: 'serious', informationDensity: 'dense' });
   const musicAsset = sorted.find(a => a.kind === 'music' && a.permission === 'permitted');
