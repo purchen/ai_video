@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "transactionId": "cfb77464-15f5-4583-8fa1-c5aa9a9aa73e",
+  "projectId": "mvp-project",
+  "approvedScriptHash": "b2dd682f8657e59efa3447754b419c60fc4e5f0312ae5a5b2278a9b4a22ba1d8",
+  "masterHash": "dda3e26e948eeac6c46a27d7551305915dad1135824236acbaaa372a5f2b2dc4",
+  "timingsHash": "4178fef3fb76dfe2c76301acdad6bea46ab888ec1742847e138f7289fb5b35ae",
+  "reportHash": "64d9ab71622905fe668be847a6dfb92a5c8916f3397d3e1ecc8d8738802b0aaa",
+  "chargeHash": "e3eb084d01ea856549dc5d5290def3201d3cff255cca46d2062f72743d79791d",
+  "authorizationReference": "synthetic:voice:Microsoft Huihui Desktop",
+  "authorizationHash": "67e91b5a1a68f9f4b3ae26ebcfcaa74d9cf84bf9ac1c00d297a5ba1eda37c42a",
+  "committedAt": "2026-09-04T03:29:52.995Z"
+}

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "transactionId": "abbdeacc-2cfc-4227-90e3-d0b95ec96956",
+  "projectId": "topic-001",
+  "approvedScriptHash": "606ee75e2c3eba9de1791915d0f61b9e7280f329a43e8e024c0a39bd773d80ad",
+  "providerId": "offline-technical-fixture",
+  "reservationId": "abbdeacc-2cfc-4227-90e3-d0b95ec96956",
+  "idempotencyKey": "voice:topic-001:606ee75e2c3eba9de1791915d0f61b9e7280f329a43e8e024c0a39bd773d80ad:abbdeacc-2cfc-4227-90e3-d0b95ec96956",
+  "authorizedMaxCny": 0,
+  "remainingAtAuthorizationCny": 0,
+  "budgetScope": "single-process; multi-process requires Task9 project lock",
+  "estimate": {
+    "providerId": "offline-technical-fixture",
+    "currency": "CNY",
+    "amount": 0,
+    "basis": "local procedural test tone; no speech synthesis or external call"
+  },
+  "actual": {
+    "providerId": "offline-technical-fixture",
+    "currency": "CNY",
+    "amount": 0,
+    "basis": "local procedural test tone; no speech synthesis or external call"
+  },
+  "status": "SETTLED_WITHIN_AUTHORIZATION",
+  "settledAt": "2026-09-04T03:33:03.513Z"
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "attemptId": "cfb77464-15f5-4583-8fa1-c5aa9a9aa73e",
+  "actual": {
+    "providerId": "windows-system-speech-fixture",
+    "currency": "CNY",
+    "amount": 0,
+    "basis": "replay locally synthesized Windows Huihui fixture; no paid API or external call"
+  },
+  "withinAuthorization": true,
+  "settledAt": "2026-09-04T03:29:52.995Z"
+}

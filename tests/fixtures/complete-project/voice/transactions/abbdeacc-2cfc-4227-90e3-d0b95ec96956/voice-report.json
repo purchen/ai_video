@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "status": "READY",
+  "projectId": "topic-001",
+  "transactionId": "abbdeacc-2cfc-4227-90e3-d0b95ec96956",
+  "approvedScriptHash": "606ee75e2c3eba9de1791915d0f61b9e7280f329a43e8e024c0a39bd773d80ad",
+  "providerId": "offline-technical-fixture",
+  "model": "tone-not-speech",
+  "voiceId": "alloy",
+  "voiceKind": "synthetic",
+  "authorization": "synthetic",
+  "authorizationReference": "synthetic:voice:alloy",
+  "authorizationHash": "1703a17a5fadd94b79519a56de3b4b1c204eb398e9cd827bfcef4e3cade86d06",
+  "durationMs": 60000,
+  "sampleRateHz": 48000,
+  "channels": 1,
+  "formatName": "wav",
+  "codecName": "pcm_s16le",
+  "integratedLufs": -34.25,
+  "costCny": 0,
+  "generatedAt": "2026-09-04T03:33:03.513Z"
+}

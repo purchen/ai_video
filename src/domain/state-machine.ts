@@ -1,0 +1,37 @@
+export type WorkflowState =
+  | 'DISCOVERED' | 'RESEARCHED' | 'TOPIC_REVIEW_REQUIRED' | 'TOPIC_APPROVED'
+  | 'SCRIPT_DRAFTED' | 'SCRIPT_REVIEW_REQUIRED' | 'SCRIPT_APPROVED'
+  | 'VOICE_READY' | 'EDIT_PLAN_READY' | 'RENDERED' | 'QC_PASSED' | 'COMPLETE'
+  | 'BLOCKED_EVIDENCE' | 'BLOCKED_PERMISSION' | 'BLOCKED_PROVIDER'
+  | 'FAILED_RENDER' | 'FAILED_QC';
+
+export type WorkflowEvent =
+  | 'FINISH_DISCOVERY' | 'FINISH_RESEARCH' | 'REQUEST_TOPIC_REVIEW'
+  | 'APPROVE_TOPIC' | 'DRAFT_SCRIPT' | 'REQUEST_SCRIPT_REVIEW'
+  | 'APPROVE_SCRIPT' | 'GENERATE_VOICE' | 'BUILD_EDIT_PLAN'
+  | 'RENDER' | 'PASS_QC' | 'FINISH';
+
+const transitions: Partial<Record<WorkflowState, Partial<Record<WorkflowEvent, WorkflowState>>>> = {
+  DISCOVERED: { FINISH_DISCOVERY: 'RESEARCHED' },
+  RESEARCHED: { FINISH_RESEARCH: 'TOPIC_REVIEW_REQUIRED', REQUEST_TOPIC_REVIEW: 'TOPIC_REVIEW_REQUIRED' },
+  TOPIC_REVIEW_REQUIRED: { APPROVE_TOPIC: 'TOPIC_APPROVED' },
+  TOPIC_APPROVED: { DRAFT_SCRIPT: 'SCRIPT_DRAFTED' },
+  SCRIPT_DRAFTED: { REQUEST_SCRIPT_REVIEW: 'SCRIPT_REVIEW_REQUIRED' },
+  SCRIPT_REVIEW_REQUIRED: { APPROVE_SCRIPT: 'SCRIPT_APPROVED' },
+  SCRIPT_APPROVED: { GENERATE_VOICE: 'VOICE_READY' },
+  VOICE_READY: { BUILD_EDIT_PLAN: 'EDIT_PLAN_READY' },
+  EDIT_PLAN_READY: { RENDER: 'RENDERED' },
+  RENDERED: { PASS_QC: 'QC_PASSED' },
+  QC_PASSED: { FINISH: 'COMPLETE' },
+};
+
+export function transition(current: WorkflowState, event: WorkflowEvent): WorkflowState {
+  const next = transitions[current]?.[event];
+  if (next) return next;
+
+  if (event === 'DRAFT_SCRIPT') {
+    throw new Error('TOPIC_APPROVED is required before DRAFT_SCRIPT');
+  }
+
+  throw new Error(`Cannot apply ${event} while workflow is ${current}`);
+}

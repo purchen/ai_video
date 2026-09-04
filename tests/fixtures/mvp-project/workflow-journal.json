@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "projectId": "mvp-project",
+  "sequence": 11,
+  "manifestHash": "c0d5f731facebdf05f11299ba7005696bb17df0a57c0bae0f2896bc048dee601",
+  "artifactHashes": {
+    "topic-candidates.json": "3393cdd626e9233dedbd72864fe596ed7eac0e5d1dbbfd4014888d8a52be5745",
+    "sources.json": "979db239876218868fd4bc8c61da8bf8b1452e08b6cb3cf46531693e43d554cc",
+    "topic-card.json": "d25036c0c874027cc8b4f353e2a6d83e63e95c3cbc190d2b7fbc2ab44994209f",
+    "topic-approval.commit.json": "e325f130f4203c35c45dcd58d61b4eed21f9e3172a1bdea2da17dea6fa116086",
+    "script-draft.json": "533adc213f4481108da506dccf62f46f7ec65e280354071c57db2d5c4a594d4d",
+    "approved-script.json": "8233fd5b8baa549ebc0feba3768fe113ae794e9c6516e62f15109d1555a50efc",
+    "script-approval.commit.json": "44f59a4eaf9c6b49cad9af4d1fbd7b0616b8da45837f196a138ee117c5f163f2",
+    "voice/current.json": "ddbf7f39b152a39e41f7384e5791275ec35bcfb05ff6760633bf6f83df989345",
+    "asset-manifest.json": "214d39f3de7b7cd95eabb53341c638e96f7dbf6623769960bde91f883563f025",
+    "edit-plan.json": "cf4dff8d987f682f589b5cbb139b458ff8d5724bf7bcc7de8ba9cde4c9b46b6b",
+    "output/final.mp4": "eab69081f5c14599dbd8b94a905f9ae72cec34e2b94693a9b578c00b83a4c0c5"
+  },
+  "state": "COMPLETE",
+  "lastSuccessfulState": "COMPLETE",
+  "stage": "finish",
+  "inputHash": "b1f38688b022cb73e81418d099f0f11583dc654ad9681f54f3fd4b4f0bd10fed",
+  "attemptId": "cfb77464-15f5-4583-8fa1-c5aa9a9aa73e",
+  "message": "stage completed",
+  "updatedAt": "2026-09-04T03:32:33.983Z",
+  "voiceId": "Microsoft Huihui Desktop",
+  "cache": {
+    "discover": {
+      "inputHash": "66dae6d999693eb4bb66fa4bf7c5b02cec29ceff67653924039482f9249c0b83",
+      "state": "DISCOVERED"
+    },
+    "research": {
+      "inputHash": "9077eabb03f02ccbc989a3f951c722015c662043af55a53f1583348dce4ce1e1",
+      "state": "TOPIC_REVIEW_REQUIRED"
+    },
+    "approve-topic": {
+      "inputHash": "2aebbad1a224ae8d3106439c3821101bc5d886638d3ce57dcf0ed70a05a03935",
+      "state": "TOPIC_APPROVED"
+    },
+    "draft-script": {
+      "inputHash": "689d069a70f1b217abbaa6da8ab794765fa0a8d72500fc0f9fa29151ce815e1c",
+      "state": "SCRIPT_REVIEW_REQUIRED"
+    },
+    "approve-script": {
+      "inputHash": "6c1fac657a9eaef708d8140420972ec0ba63ca0246b63c36e1d3aaee17a14d1e",
+      "state": "SCRIPT_APPROVED"
+    },
+    "voice": {
+      "inputHash": "60e75e67e267d81e230f7800e11e02106e1f299f24014fb3f829ec197a72a773",
+      "state": "VOICE_READY"
+    },
+    "edit-plan": {
+      "inputHash": "55af9825bdf434cd324d3a2ea7726b25047ff9a38a4eb062c201f00f62573b5f",
+      "state": "EDIT_PLAN_READY"
+    },
+    "render": {
+      "inputHash": "2021d2fe8d1d2d81678c7dad7a1d9eb49a8f1c70961df5a3e62891ccd886a68d",
+      "state": "RENDERED"
+    },
+    "qc": {
+      "inputHash": "81d8a88b788514ad0d561c83f16250002604d73e54d1b866d77b918eb65f1ce2",
+      "state": "QC_PASSED"
+    },
+    "finish": {
+      "inputHash": "b1f38688b022cb73e81418d099f0f11583dc654ad9681f54f3fd4b4f0bd10fed",
+      "state": "COMPLETE"
+    }
+  },
+  "hash": "f1c78c5dc13fbac23786e39023464d0af5bf2f9a3528ab7ae3b3bc750b5047fa"
+}

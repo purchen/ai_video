@@ -1,5 +1,6 @@
 # Local brainstorming preview state
 .superpowers/
+.worktrees/
 
 # Local configuration and credentials
 .env

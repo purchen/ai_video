@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "attemptId": "cfb77464-15f5-4583-8fa1-c5aa9a9aa73e",
+  "projectId": "mvp-project",
+  "approvedScriptHash": "b2dd682f8657e59efa3447754b419c60fc4e5f0312ae5a5b2278a9b4a22ba1d8",
+  "providerId": "windows-system-speech-fixture",
+  "idempotencyKey": "voice:mvp-project:b2dd682f8657e59efa3447754b419c60fc4e5f0312ae5a5b2278a9b4a22ba1d8:cfb77464-15f5-4583-8fa1-c5aa9a9aa73e",
+  "estimate": {
+    "providerId": "windows-system-speech-fixture",
+    "currency": "CNY",
+    "amount": 0,
+    "basis": "replay locally synthesized Windows Huihui fixture; no paid API or external call"
+  },
+  "authorizedMaxCny": 0,
+  "remainingAtAuthorizationCny": 0,
+  "budgetScope": "single-process; multi-process requires Task9 project lock",
+  "reservedAt": "2026-09-04T03:29:52.995Z"
+}

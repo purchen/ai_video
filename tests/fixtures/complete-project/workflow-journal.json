@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "projectId": "topic-001",
+  "sequence": 6,
+  "manifestHash": "7aeb8b91bbfd1ca84a46df0ee2dc30c5d881423561e826d032a938933304eff7",
+  "artifactHashes": {
+    "topic-candidates.json": "79077db450b80484b4c16d8a173860df7c35d9ae13cd404b37529f68074d3012",
+    "sources.json": "364e5ee377eb5dfce868f8cfbb265a2511b67e1ee51f491c8e19dfe8803137af",
+    "topic-card.json": "1ea1519698c0fb144c83c0113bdf475167d3ad459ec2132ec693769739686577",
+    "topic-approval.commit.json": "146b7f9b5e5c0b6d430daaad7ae02ab48a5b39dbdf7060ee94d9e04d20910bcb",
+    "script-draft.json": "0bbdcda55bc9b556a9c4ef1a35b6d641b96bf65df486b797b9db6c6d15e5fa19",
+    "approved-script.json": "ad14934b269a34121eccd72f65ae5d74ae17698b6b50197ead10f4a6e8fea202",
+    "script-approval.commit.json": "12cfed27fdb32d534a8a12206b409f0cd609f043fcd350b2f016076032d2d2df",
+    "voice/current.json": "db9eae8109e7e87cd0a1bd33e5156872ca616a28aaa2519d69d08e3a86c64b23",
+    "asset-manifest.json": "6fbfec117be02df6db922831b914a9c512c3b1866ed4868d6e9a02c10b139024",
+    "edit-plan.json": "1bf602072e705b00cf0de687b1a266c7010e989c811f1266e67b2643df895128",
+    "output/final.mp4": "20a317c6bb47ebcd8c41df7ba346219c16ec16694760b3036fbec49307e0443c"
+  },
+  "state": "COMPLETE",
+  "lastSuccessfulState": "COMPLETE",
+  "stage": "finish",
+  "inputHash": "331234377fa0abbc54149e42272e4eeeee932bda3f12518405dc7fa51aa7bbb8",
+  "attemptId": "abbdeacc-2cfc-4227-90e3-d0b95ec96956",
+  "message": "stage completed",
+  "updatedAt": "2026-09-04T03:34:40.148Z",
+  "voiceId": "alloy",
+  "cache": {
+    "voice": {
+      "inputHash": "4b65848809f1be6665e80e3b348540e623b1bdb70c3466cc214daba445eb2e7e",
+      "state": "VOICE_READY"
+    },
+    "edit-plan": {
+      "inputHash": "164cfe549c674c738f20bee7febcf0f181b68bdeb20695c525487ba5082bf13d",
+      "state": "EDIT_PLAN_READY"
+    },
+    "render": {
+      "inputHash": "83c668c84e4198834f9d5d65bb69e35a26f6e0642e14802fe5f168f56ca9bb3b",
+      "state": "RENDERED"
+    },
+    "qc": {
+      "inputHash": "9ed528bacc923f74567c8213f9bc7df299e0233d09746e86dbf213e98571db11",
+      "state": "QC_PASSED"
+    },
+    "finish": {
+      "inputHash": "331234377fa0abbc54149e42272e4eeeee932bda3f12518405dc7fa51aa7bbb8",
+      "state": "COMPLETE"
+    }
+  },
+  "hash": "cef211c6815a9a3f44da8f9fb06487bc201f07d023f8440f14c2ac868c7fc5c6"
+}
