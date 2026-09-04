@@ -55,11 +55,56 @@ const mediaSchema = z.object({
       width: z.number().optional(),
       height: z.number().optional(),
       avg_frame_rate: z.string().optional(),
+      duration: z.union([z.number(), z.string()]).optional(),
+      duration_ts: z.union([z.number(), z.string()]).optional(),
+      time_base: z.string().optional(),
     }),
   ),
   format: z.object({ duration: z.coerce.number().positive() }),
 });
 export type MediaMetadata = z.infer<typeof mediaSchema>;
+
+/** Container/audio duration cannot supply missing visual frames. Ambiguous tracks are unsupported. */
+export function assertClipCoverage(input: unknown, durationMs: number): void {
+  const media = mediaSchema.parse(input);
+  const videos = media.streams.filter(
+    (stream) => stream.codec_type === 'video',
+  );
+  if (videos.length !== 1)
+    throw new Error('clip video stream selection is missing or ambiguous');
+  const video = videos[0];
+  const candidates: number[] = [];
+  const seconds = Number(video.duration);
+  if (Number.isFinite(seconds) && seconds > 0) candidates.push(seconds * 1000);
+  const ticks = Number(video.duration_ts);
+  const fraction = video.time_base?.match(/^(\d+)\/(\d+)$/);
+  if (fraction && Number.isSafeInteger(ticks) && ticks > 0) {
+    const numerator = Number(fraction[1]);
+    const denominator = Number(fraction[2]);
+    const milliseconds = ((ticks * numerator) / denominator) * 1000;
+    if (
+      numerator > 0 &&
+      denominator > 0 &&
+      Number.isFinite(milliseconds) &&
+      milliseconds > 0
+    )
+      candidates.push(milliseconds);
+  }
+  if (!candidates.length)
+    throw new Error(
+      'clip video stream duration is unknown; cannot establish coverage',
+    );
+  if (
+    !Number.isFinite(durationMs) ||
+    durationMs <= 0 ||
+    Math.min(...candidates) + 0.001 < durationMs
+  ) {
+    throw new Error(
+      'clip video stream is shorter than selected scene coverage',
+    );
+  }
+}
+
 export async function probeMedia(path: string): Promise<MediaMetadata> {
   const { ffprobe } = await resolveManagedMediaTools();
   const { stdout } = await executeMediaTool(ffprobe, [

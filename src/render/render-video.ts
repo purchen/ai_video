@@ -38,6 +38,7 @@ import { validateRenderInputs } from './validate-inputs';
 import { assertStaticImage } from './static-image';
 import {
   assertRenderedMedia,
+  assertClipCoverage,
   probeMedia,
   resolveManagedMediaTools,
 } from './media-tools';
@@ -132,11 +133,7 @@ export async function renderVideo(
       if (!['.mp4', '.webm', '.mov'].includes(extension))
         throw new Error('unsupported authorized clip format');
       const info = await probeMedia(file);
-      if (
-        !info.streams.some((s) => s.codec_type === 'video') ||
-        info.format.duration * 1000 + 33 < scene.endMs - scene.startMs
-      )
-        throw new Error('clip has no video or is shorter than selected scene');
+      assertClipCoverage(info, scene.endMs - scene.startMs);
     }
     paths.set(v.asset.path, file);
   }
