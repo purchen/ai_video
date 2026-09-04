@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "transactionId": "9647e095-dccb-4211-8404-d9b3ede806b0",
+  "projectId": "topic-001",
+  "candidateId": "candidate-1",
+  "approvedAt": "2026-09-04T02:30:48.987Z",
+  "approvedBy": "fixture-editor",
+  "candidate": {
+    "title": "夜校报名延长",
+    "normalizedTopic": "night-school",
+    "questionHook": "报名延长意味着什么？",
+    "sourceUrls": [
+      "https://example.com/official"
+    ],
+    "sourcePublishers": [
+      "官方"
+    ],
+    "risks": [],
+    "eligibleForRecommendation": true,
+    "score": {
+      "relevance": 5,
+      "tension": 4,
+      "evidenceAvailability": 5,
+      "independentJudgment": 5,
+      "laneFit": 5,
+      "visualDifficulty": 2,
+      "risk": 1,
+      "total": 4.5
+    }
+  }
+}

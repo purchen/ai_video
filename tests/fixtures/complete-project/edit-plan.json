@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "projectId": "topic-001",
+  "approvedScriptHash": "2a6db5b0e5ff253d4450eb7e831d1ba7727cc181d710408b4785864956411e4a",
+  "voiceReportHash": "fa985a3b6a7346cf945f60c0212d82cab64cd14d21742c52f5bb2351c41ccb50",
+  "voice": {
+    "masterPath": "voice/transactions/f9c42599-accb-442e-8f03-4a5c35598c43/master.wav",
+    "durationMs": 60000
+  },
+  "scenes": [
+    {
+      "id": "scene-sentence-question-hook",
+      "section": "question-hook",
+      "scriptSentenceIds": [
+        "sentence-question-hook"
+      ],
+      "startMs": 0,
+      "endMs": 8919,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "我们还需要关注实际变化。"
+      }
+    },
+    {
+      "id": "scene-sentence-fact-baseline",
+      "section": "fact-baseline",
+      "scriptSentenceIds": [
+        "sentence-fact-baseline"
+      ],
+      "startMs": 8919,
+      "endMs": 15405,
+      "visual": {
+        "kind": "source-card",
+        "sources": [
+          {
+            "schemaVersion": 1,
+            "id": "official-1",
+            "url": "https://example.com/official",
+            "title": "报名公告",
+            "publisher": "官方",
+            "summary": "官方确认报名延长。",
+            "sourceType": "official-data",
+            "evidenceWeight": "high",
+            "capturedAt": "2026-09-01T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "scene-sentence-strong-evidence",
+      "section": "strong-evidence",
+      "scriptSentenceIds": [
+        "sentence-strong-evidence"
+      ],
+      "startMs": 15405,
+      "endMs": 24324,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "我们还需要关注实际变化。"
+      }
+    },
+    {
+      "id": "scene-sentence-mechanism",
+      "section": "mechanism",
+      "scriptSentenceIds": [
+        "sentence-mechanism"
+      ],
+      "startMs": 24324,
+      "endMs": 33243,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "我们还需要关注实际变化。"
+      }
+    },
+    {
+      "id": "scene-sentence-counter-evidence",
+      "section": "counter-evidence",
+      "scriptSentenceIds": [
+        "sentence-counter-evidence"
+      ],
+      "startMs": 33243,
+      "endMs": 42162,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "我们还需要关注实际变化。"
+      }
+    },
+    {
+      "id": "scene-sentence-judgment",
+      "section": "judgment",
+      "scriptSentenceIds": [
+        "sentence-judgment"
+      ],
+      "startMs": 42162,
+      "endMs": 51081,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "我们还需要关注实际变化。"
+      }
+    },
+    {
+      "id": "scene-sentence-closing-question",
+      "section": "closing-question",
+      "scriptSentenceIds": [
+        "sentence-closing-question"
+      ],
+      "startMs": 51081,
+      "endMs": 60000,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "我们还需要关注实际变化。"
+      }
+    }
+  ],
+  "captions": [
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "sentence-question-hook",
+      "text": "我们还需要关注实际变化",
+      "startMs": 0,
+      "endMs": 8919
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "sentence-fact-baseline",
+      "text": "官方确认报名延长",
+      "startMs": 8919,
+      "endMs": 15405
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "sentence-strong-evidence",
+      "text": "我们还需要关注实际变化",
+      "startMs": 15405,
+      "endMs": 24324
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "sentence-mechanism",
+      "text": "我们还需要关注实际变化",
+      "startMs": 24324,
+      "endMs": 33243
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "sentence-counter-evidence",
+      "text": "我们还需要关注实际变化",
+      "startMs": 33243,
+      "endMs": 42162
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "sentence-judgment",
+      "text": "我们还需要关注实际变化",
+      "startMs": 42162,
+      "endMs": 51081
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "sentence-closing-question",
+      "text": "我们还需要关注实际变化",
+      "startMs": 51081,
+      "endMs": 60000
+    }
+  ],
+  "music": {
+    "mode": "none"
+  },
+  "warnings": [
+    "sentence-strong-evidence uses kinetic text because no bound factual source is available",
+    "sentence-counter-evidence uses kinetic text because no bound factual source is available"
+  ]
+}

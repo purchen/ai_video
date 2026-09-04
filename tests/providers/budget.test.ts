@@ -85,3 +85,13 @@ describe('BudgetGuard', () => {
     },
   );
 });
+// Restart hydration must preserve reserved exposure even if the current budget is smaller.
+it('hydrates durable reservations and settlements without reauthorizing historical costs', () => {
+  const guard = new BudgetGuard({ limitCny: 5, spentCny: 0, dryRun: false });
+  const estimate = { providerId: 'fake', currency: 'CNY' as const, amount: 3, basis: 'audit' };
+  guard.restoreReservation({ reservationId: 'old', providerId: 'fake', currency: 'CNY', maximumAmountCny: 3, remainingAtAuthorizationCny: 10 }, estimate);
+  expect(guard.reservedCny()).toBe(3);
+  expect(() => guard.reserve('new', estimate)).toThrow(/approval/);
+  guard.settleReservation('old', { ...estimate, amount: 2 });
+  expect(guard.spentCny()).toBe(2); expect(guard.reservedCny()).toBe(0);
+});

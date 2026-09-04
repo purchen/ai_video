@@ -62,6 +62,14 @@ const manualRightsBase = {
 export const manualAudioAuthorizationSchema = z.discriminatedUnion('sourceKind', [
   z.object({
     ...manualRightsBase,
+    sourceKind: z.literal('original-human'),
+    authorization: z.literal('user-authorized'),
+    voiceKind: z.literal('original-human'),
+    owner: z.string().trim().min(1),
+    sourceAudioHash: sha256Schema,
+  }).strict(),
+  z.object({
+    ...manualRightsBase,
     sourceKind: z.literal('jianying-synthetic'),
     authorization: z.literal('synthetic'),
     voiceKind: z.literal('synthetic'),
@@ -231,6 +239,9 @@ async function importManualVoiceExclusively(request: ImportManualVoiceRequest): 
   const rights = manualAudioAuthorizationSchema.parse(request.authorization);
   const io = request.artifactIo ?? nodeVoiceArtifactIo;
   const transactionId = transactionIdSchema.parse(request.attemptId);
+  if (rights.sourceKind === 'original-human' && rights.sourceAudioHash !== await sha256File(io, request.audioPath)) {
+    throw new Error('original recording authorization does not match source audio hash');
+  }
   await assertVoiceAttemptUnused(request.store, transactionId, io);
   const generatedAt = (request.now ?? (() => new Date().toISOString()))();
   const root = voiceRoot(request.store);
@@ -311,6 +322,7 @@ async function importManualVoiceExclusively(request: ImportManualVoiceRequest): 
     await writeJson(io, timingsPath, timings);
     await writeJson(io, reportPath, report);
     await writeJson(io, chargePath, charge);
+    if (rights.sourceKind === 'original-human') await writeJson(io, join(directory, 'authorization.json'), rights);
     const marker = voiceCommitMarkerSchema.parse({
       schemaVersion: 1,
       transactionId,

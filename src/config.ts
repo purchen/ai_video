@@ -139,6 +139,18 @@ export class BudgetGuard {
     return this.actualSpentCny;
   }
 
+  /** Replay already validated durable audit; never grant a new authorization. */
+  restoreReservation(authorization: BudgetAuthorization, estimate: CostEstimate): void {
+    this.assertValidEstimate(estimate);
+    if (!authorization.reservationId.trim() || authorization.providerId !== estimate.providerId
+      || authorization.currency !== estimate.currency || authorization.maximumAmountCny !== estimate.amount
+      || !Number.isFinite(authorization.remainingAtAuthorizationCny) || authorization.remainingAtAuthorizationCny < 0) {
+      throw new Error('invalid durable budget authorization');
+    }
+    if (this.reservations.has(authorization.reservationId)) throw new Error('duplicate durable budget reservation');
+    this.reservations.set(authorization.reservationId, { authorization: { ...authorization }, estimate: { ...estimate } });
+  }
+
   reservedCny(): number {
     let total = 0;
     for (const reservation of this.reservations.values()) {

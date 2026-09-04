@@ -51,7 +51,7 @@ export const voiceReportSchema = z.object({
   providerId: z.string().min(1),
   model: z.string().min(1),
   voiceId: z.string().min(1),
-  voiceKind: z.enum(['synthetic', 'cloned', 'similar-real-person']),
+  voiceKind: z.enum(['synthetic', 'cloned', 'similar-real-person', 'original-human']),
   authorization: z.enum(['synthetic', 'user-authorized']),
   authorizationReference: z.string().min(1),
   authorizationHash: sha256Schema,

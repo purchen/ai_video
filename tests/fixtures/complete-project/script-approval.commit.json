@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "transactionId": "a0b6b72b-e5a0-4155-bfa0-d950abb4c17c",
+  "approvalType": "script",
+  "projectId": "topic-001",
+  "artifactName": "approved-script.json",
+  "artifactHash": "13174fcfdc00b47dc3ddb8c9bec0c140a5deb7004aadd9dbbc484205e66c140d",
+  "projectHash": "cdc9a6bbe933859e32cdabec18653eb30caf47af33a63a0031bfe8347cfe9807",
+  "projectSnapshot": {
+    "schemaVersion": 1,
+    "id": "topic-001",
+    "topic": "夜校报名延长",
+    "workflowState": "SCRIPT_APPROVED",
+    "createdAt": "2026-09-01T00:00:00.000Z",
+    "updatedAt": "2026-09-04T02:30:49.053Z",
+    "sources": [
+      {
+        "schemaVersion": 1,
+        "id": "official-1",
+        "url": "https://example.com/official",
+        "title": "报名公告",
+        "publisher": "官方",
+        "summary": "官方确认报名延长。",
+        "sourceType": "official-data",
+        "evidenceWeight": "high",
+        "capturedAt": "2026-09-01T00:00:00.000Z"
+      }
+    ],
+    "script": {
+      "schemaVersion": 1,
+      "id": "script-001",
+      "projectId": "topic-001",
+      "title": "夜校服务的改变",
+      "sections": [
+        {
+          "type": "question-hook",
+          "sentenceIds": [
+            "sentence-question-hook"
+          ],
+          "lenses": []
+        },
+        {
+          "type": "fact-baseline",
+          "sentenceIds": [
+            "sentence-fact-baseline"
+          ],
+          "lenses": []
+        },
+        {
+          "type": "strong-evidence",
+          "sentenceIds": [
+            "sentence-strong-evidence"
+          ],
+          "lenses": []
+        },
+        {
+          "type": "mechanism",
+          "sentenceIds": [
+            "sentence-mechanism"
+          ],
+          "lenses": []
+        },
+        {
+          "type": "counter-evidence",
+          "sentenceIds": [
+            "sentence-counter-evidence"
+          ],
+          "lenses": []
+        },
+        {
+          "type": "judgment",
+          "sentenceIds": [
+            "sentence-judgment"
+          ],
+          "lenses": []
+        },
+        {
+          "type": "closing-question",
+          "sentenceIds": [
+            "sentence-closing-question"
+          ],
+          "lenses": []
+        }
+      ],
+      "sentences": [
+        {
+          "id": "sentence-question-hook",
+          "text": "我们还需要关注实际变化。",
+          "type": "transition",
+          "sourceIds": []
+        },
+        {
+          "id": "sentence-fact-baseline",
+          "text": "官方确认报名延长。",
+          "type": "fact",
+          "sourceIds": [
+            "official-1"
+          ],
+          "attribution": "官方"
+        },
+        {
+          "id": "sentence-strong-evidence",
+          "text": "我们还需要关注实际变化。",
+          "type": "transition",
+          "sourceIds": []
+        },
+        {
+          "id": "sentence-mechanism",
+          "text": "我们还需要关注实际变化。",
+          "type": "transition",
+          "sourceIds": []
+        },
+        {
+          "id": "sentence-counter-evidence",
+          "text": "我们还需要关注实际变化。",
+          "type": "transition",
+          "sourceIds": []
+        },
+        {
+          "id": "sentence-judgment",
+          "text": "我们还需要关注实际变化。",
+          "type": "transition",
+          "sourceIds": []
+        },
+        {
+          "id": "sentence-closing-question",
+          "text": "我们还需要关注实际变化。",
+          "type": "transition",
+          "sourceIds": []
+        }
+      ],
+      "estimatedDurationMs": 60000,
+      "createdAt": "2026-09-01T00:00:00.000Z",
+      "updatedAt": "2026-09-01T00:00:00.000Z"
+    }
+  },
+  "expectedWorkflowState": "SCRIPT_APPROVED",
+  "committedAt": "2026-09-04T02:30:49.053Z"
+}

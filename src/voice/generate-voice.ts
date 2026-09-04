@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import type { BudgetAuthorization, BudgetGuard } from '../config';
 import type { CostEstimate, TtsRequest, TtsResult } from '../providers/contracts';
 import type { ProviderRegistry } from '../providers/registry';
-import { createManualVoicePackage, type ManualVoicePackage } from '../providers/tts/manual';
+import { createManualVoicePackage, manualAudioAuthorizationSchema, type ManualVoicePackage } from '../providers/tts/manual';
 import { readApprovedScript } from '../review/approve';
 import { hashCanonicalJson } from '../script/hash-script';
 import { scriptNarrationText } from '../script/narration';
@@ -409,6 +409,11 @@ async function verifyTransaction(
     const timings = wordTimingsSchema.parse(await readJson(artifactIo, timingsPath));
     const report = voiceReportSchema.parse(await readJson(artifactIo, reportPath));
     const charge = voiceChargeSchema.parse(await readJson(artifactIo, chargePath));
+    if (report.voiceKind === 'original-human') {
+      const rights = manualAudioAuthorizationSchema.parse(await readJson(artifactIo, join(directory, 'authorization.json')));
+      if (rights.sourceKind !== 'original-human' || rights.voiceId !== report.voiceId
+        || rights.consentReference !== report.authorizationReference || hashCanonicalJson(rights) !== marker.authorizationHash) throw new Error('original recording rights binding mismatch');
+    }
     const hashesMatch = marker.masterHash === await sha256File(artifactIo, masterPath)
       && marker.timingsHash === await sha256File(artifactIo, timingsPath)
       && marker.reportHash === await sha256File(artifactIo, reportPath)

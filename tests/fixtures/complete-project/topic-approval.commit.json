@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "transactionId": "9647e095-dccb-4211-8404-d9b3ede806b0",
+  "approvalType": "topic",
+  "projectId": "topic-001",
+  "artifactName": "topic-card.json",
+  "artifactHash": "7cb9f3e2b7089e7293215e1d7b7f993599a52fa3a55cb12568454d914f578afd",
+  "projectHash": "351958aae802efd63d8767e42f46be7e2f3ab6e31105fa46822a350ff7717062",
+  "projectSnapshot": {
+    "schemaVersion": 1,
+    "id": "topic-001",
+    "topic": "夜校报名延长",
+    "workflowState": "TOPIC_APPROVED",
+    "createdAt": "2026-09-01T00:00:00.000Z",
+    "updatedAt": "2026-09-04T02:30:48.987Z",
+    "sources": [
+      {
+        "schemaVersion": 1,
+        "id": "official-1",
+        "url": "https://example.com/official",
+        "title": "报名公告",
+        "publisher": "官方",
+        "summary": "官方确认报名延长。",
+        "sourceType": "official-data",
+        "evidenceWeight": "high",
+        "capturedAt": "2026-09-01T00:00:00.000Z"
+      }
+    ]
+  },
+  "expectedWorkflowState": "TOPIC_APPROVED",
+  "committedAt": "2026-09-04T02:30:48.987Z"
+}

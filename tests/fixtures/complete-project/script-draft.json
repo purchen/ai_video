@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "id": "script-001",
+  "projectId": "topic-001",
+  "title": "夜校服务的改变",
+  "sections": [
+    {
+      "type": "question-hook",
+      "sentenceIds": [
+        "sentence-question-hook"
+      ],
+      "lenses": []
+    },
+    {
+      "type": "fact-baseline",
+      "sentenceIds": [
+        "sentence-fact-baseline"
+      ],
+      "lenses": []
+    },
+    {
+      "type": "strong-evidence",
+      "sentenceIds": [
+        "sentence-strong-evidence"
+      ],
+      "lenses": []
+    },
+    {
+      "type": "mechanism",
+      "sentenceIds": [
+        "sentence-mechanism"
+      ],
+      "lenses": []
+    },
+    {
+      "type": "counter-evidence",
+      "sentenceIds": [
+        "sentence-counter-evidence"
+      ],
+      "lenses": []
+    },
+    {
+      "type": "judgment",
+      "sentenceIds": [
+        "sentence-judgment"
+      ],
+      "lenses": []
+    },
+    {
+      "type": "closing-question",
+      "sentenceIds": [
+        "sentence-closing-question"
+      ],
+      "lenses": []
+    }
+  ],
+  "sentences": [
+    {
+      "id": "sentence-question-hook",
+      "text": "我们还需要关注实际变化。",
+      "type": "transition",
+      "sourceIds": []
+    },
+    {
+      "id": "sentence-fact-baseline",
+      "text": "官方确认报名延长。",
+      "type": "fact",
+      "sourceIds": [
+        "official-1"
+      ],
+      "attribution": "官方"
+    },
+    {
+      "id": "sentence-strong-evidence",
+      "text": "我们还需要关注实际变化。",
+      "type": "transition",
+      "sourceIds": []
+    },
+    {
+      "id": "sentence-mechanism",
+      "text": "我们还需要关注实际变化。",
+      "type": "transition",
+      "sourceIds": []
+    },
+    {
+      "id": "sentence-counter-evidence",
+      "text": "我们还需要关注实际变化。",
+      "type": "transition",
+      "sourceIds": []
+    },
+    {
+      "id": "sentence-judgment",
+      "text": "我们还需要关注实际变化。",
+      "type": "transition",
+      "sourceIds": []
+    },
+    {
+      "id": "sentence-closing-question",
+      "text": "我们还需要关注实际变化。",
+      "type": "transition",
+      "sourceIds": []
+    }
+  ],
+  "estimatedDurationMs": 60000,
+  "createdAt": "2026-09-01T00:00:00.000Z",
+  "updatedAt": "2026-09-01T00:00:00.000Z"
+}

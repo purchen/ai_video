@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "attemptId": "f9c42599-accb-442e-8f03-4a5c35598c43",
+  "transactionId": "f9c42599-accb-442e-8f03-4a5c35598c43",
+  "projectId": "topic-001",
+  "approvedScriptHash": "2a6db5b0e5ff253d4450eb7e831d1ba7727cc181d710408b4785864956411e4a",
+  "providerId": "offline-technical-fixture",
+  "idempotencyKey": "voice:topic-001:2a6db5b0e5ff253d4450eb7e831d1ba7727cc181d710408b4785864956411e4a:f9c42599-accb-442e-8f03-4a5c35598c43",
+  "status": "COMMITTED",
+  "createdAt": "2026-09-04T02:30:49.269Z",
+  "updatedAt": "2026-09-04T02:30:49.269Z"
+}

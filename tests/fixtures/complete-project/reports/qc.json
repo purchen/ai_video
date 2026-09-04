@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-09-04T02:32:04.406Z",
+  "status": "QC_PASSED",
+  "errors": [],
+  "artifacts": [
+    "project.json",
+    "topic-card.json",
+    "topic-approval.commit.json",
+    "approved-script.json",
+    "script-approval.commit.json",
+    "asset-manifest.json",
+    "edit-plan.json",
+    "voice/current.json",
+    "output/final.mp4",
+    "E:\\MyProject\\视屏号设计\\.worktrees\\short-video-mvp\\tests\\fixtures\\complete-project\\voice\\transactions\\f9c42599-accb-442e-8f03-4a5c35598c43\\master.wav"
+  ],
+  "inputHashes": {
+    "topic-card.json": "934049999d652b11acff8e4ffb70d6033a95c4042fba459a59f9ef640a7b939f",
+    "topic-approval.commit.json": "b0e7f7bdfebd203604b921808284db0ea2b780fe1dc0b33f8c6858bf43a1bba9",
+    "approved-script.json": "d79c381ddef97e6b65a35f987efd3893ab6e47c86a97b60faa1ffed9801250da",
+    "script-approval.commit.json": "83b338da68d3b4b0fdfdb6528d192602e5e7ff5edd6c6d60c2cbc8acde44c697",
+    "asset-manifest.json": "6fbfec117be02df6db922831b914a9c512c3b1866ed4868d6e9a02c10b139024",
+    "edit-plan.json": "18f6a2efdc05ba36799433cbafae0357ab5aba505eb9a7b70955cac53481415e",
+    "voice/current.json": "9b85dcf1780478564bd601565932c2a6398a202d6993eee0e406e51c72dd9602",
+    "output/final.mp4": "20a317c6bb47ebcd8c41df7ba346219c16ec16694760b3036fbec49307e0443c"
+  }
+}
