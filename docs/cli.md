@@ -21,7 +21,7 @@ npm run dev -- next --project projects/topic-001
 npm run dev -- status --project projects/topic-001
 ```
 
-`voice` defaults to a manual narration package and exit 2. Read `voice/manual-current.json` for the immutable package ID, then `voice/manual-packages/<id>/narration.txt`. Import must use the locked approved script. `edit-plan` with no `--assets` uses source cards/kinetic text and no music. `--assets inputs/assets.json` accepts the existing AssetManifest schema and refuses unclear permission. Render uses installed managed media tools/browser, with no auto-download; explicit provisioning is `npm run render:provision` after download approval.
+`voice` defaults to a manual narration package and exit 2. Read `voice/manual-current.json` for the immutable package ID, then `voice/manual-packages/<id>/narration.txt`. Import must use the locked approved script. `edit-plan` with no `--assets` uses source cards/kinetic text and no music. `--assets inputs/assets.json` accepts the existing AssetManifest schema; unknown-permission candidates are not selected and safely fall back to text/source cards, with warnings preserved in the plan. Render uses installed managed media tools/browser, with no auto-download; explicit provisioning is `npm run render:provision` after download approval.
 
 Inputs:
 
@@ -82,7 +82,7 @@ Retries validate the journal, event chain, current manifest and official artifac
 
 `.workflow.lock` is an OS-exclusive file lock. A competing process fails fast. It is never automatically stolen: after a crash, verify the original process has stopped and no provider call remains in flight before manually removing that one lock file. Symlink/junction-managed artifact trees are rejected.
 
-Changed upstream inputs are not silently treated as cached success. Previously approved stages are not silently rewound; create a separate project or obtain an explicit reviewed revision workflow. QC aggregates errors into `reports/qc.json`; its input hashes bind the check to the final media and official artifacts.
+Changed upstream inputs are not silently treated as cached success. Previously approved stages are not silently rewound; create a separate project or obtain an explicit reviewed revision workflow. QC aggregates errors into `reports/qc.json`; its input hashes bind the check to the final media, official artifacts, and the bytes of every selected asset and permission/generation record. Unused unknown-permission candidates are ignored, but selected resources require matching permission and safe existing paths. Cached QC revalidates the persisted report; durable failure status includes structured artifact diagnostics without hiding the recorded failure.
 
 ## Preserved technical fixture
 

@@ -3,7 +3,9 @@ import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ProjectStore } from '../../src/store/project-store';
 import { runNextStage, runStage, readWorkflowStatus, withProjectLock } from '../../src/workflow/run-stage';
-import { prepared, production, probe, media } from './fixtures';
+import { prepared, production, selectedProduction, probe, media } from './fixtures';
+import { assetManifestSchema, editPlanSchema } from '../../src/edit/build-edit-plan';
+import { runCli } from '../../src/cli';
 import { projectManifestSchema } from '../../src/domain/schemas';
 import { ProviderRegistry } from '../../src/providers/registry';
 import { BudgetGuard } from '../../src/config';
@@ -112,4 +114,44 @@ it('keeps the prior valid manifest when approval commit promotion fails', async 
   try { expect(await runStage(f.store.root, 'approve-script', { actor: 'editor' })).toBe('BLOCKED_EVIDENCE'); }
   finally { spy.mockRestore(); }
   expect((await f.store.readJson('project.json', projectManifestSchema)).workflowState).toBe('SCRIPT_REVIEW_REQUIRED');
+});
+async function rendered(selected = false) {
+  const f = await (selected ? selectedProduction() : production()); roots.push(f.parent);
+  const manifest = await f.store.readJson('project.json', projectManifestSchema);
+  await f.store.writeJson('project.json', projectManifestSchema, { ...manifest, workflowState: 'EDIT_PLAN_READY' });
+  const deps = { probe, probeMedia: async () => media, render: async (root: string) => { await mkdir(join(root, 'output'), { recursive: true }); const outputPath = join(root, 'output/final.mp4'); await writeFile(outputPath, 'offline video double'); return { outputPath, durationMs: 60000 }; } };
+  expect(await runStage(f.store.root, 'render', deps)).toBe('RENDERED');
+  return { ...f, deps };
+}
+it.each(['missing', 'corrupt'])('refuses a QC cache with a %s persisted report', async kind => {
+  const f = await rendered(); expect(await runStage(f.store.root, 'qc', f.deps)).toBe('QC_PASSED');
+  const reportPath = join(f.store.root, 'reports/qc.json');
+  if (kind === 'missing') await rm(reportPath); else await writeFile(reportPath, '{}');
+  await expect(runStage(f.store.root, 'qc', f.deps)).rejects.toThrow();
+});
+it.each(['clip.mp4', 'abstract.png', 'music.wav', 'generation.json'])('invalidates cached render on same-path %s byte replacement', async name => {
+  const f = await rendered(true); await writeFile(join(f.store.root, name), 'replacement bytes');
+  await expect(runStage(f.store.root, 'render', f.deps)).rejects.toThrow(/binding|inputs|permission/);
+});
+it('rejects cached render when selected permission evidence disappears', async () => {
+  const f = await rendered(true); await rm(join(f.store.root, 'clip-license.txt'));
+  await expect(runStage(f.store.root, 'render', f.deps)).rejects.toThrow();
+});
+it('downgrades unknown unused assets and preserves warning audit without selecting their media', async () => {
+  const f = await production(); roots.push(f.parent); const manifest = await f.store.readJson('project.json', projectManifestSchema);
+  await f.store.writeJson('project.json', projectManifestSchema, { ...manifest, workflowState: 'VOICE_READY' });
+  const assets = assetManifestSchema.parse({ schemaVersion: 1, projectId: manifest.id, assets: [{ schemaVersion: 1, id: 'unlicensed', kind: 'clip', path: 'must-not-read.mp4', sentenceIds: ['sentence-question-hook'], permission: 'unknown' }] });
+  expect(await runStage(f.store.root, 'edit-plan', { probe, assets })).toBe('EDIT_PLAN_READY');
+  const plan = await f.store.readJson('edit-plan.json', editPlanSchema);
+  expect(plan.scenes[0].visual.kind).toBe('kinetic-text'); expect(plan.warnings.join(' ')).toContain('unlicensed');
+});
+it('preserves durable FAILED_QC and structured diagnostics through status, next and CLI restart', async () => {
+  const f = await rendered(); const deps = { probe, probeMedia: async () => ({ streams: [], format: { duration: 60 } }) };
+  expect(await runStage(f.store.root, 'qc', deps)).toBe('FAILED_QC');
+  const status = await readWorkflowStatus(f.store.root, deps);
+  expect(status.state).toBe('FAILED_QC'); expect(status.message).toContain('media'); expect(status.diagnostics.length).toBeGreaterThan(0);
+  expect(await runNextStage(f.store.root, deps)).toBe('FAILED_QC');
+  const lines: string[] = [];
+  expect(await runCli(['status', '--project', f.store.root], { ...deps, print: line => lines.push(line) })).toBe(1);
+  expect(lines.join('\n')).toContain('FAILED_QC'); expect(lines.join('\n')).toContain('diagnostics');
 });

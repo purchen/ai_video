@@ -42,3 +42,15 @@ export async function production() {
   await writeEditPlan(result.store, probe, assets);
   return result;
 }
+export async function selectedProduction() {
+  const f = await production();
+  const assets = assetManifestSchema.parse({ schemaVersion: 1, projectId: 'topic-001', assets: [
+    { schemaVersion: 1, id: 'clip', kind: 'clip', path: 'clip.mp4', sentenceIds: ['sentence-question-hook'], permission: 'permitted', permissionRecord: { schemaVersion: 1, assetId: 'clip', reference: 'clip-license.txt' } },
+    { schemaVersion: 1, id: 'abstract', kind: 'generated-abstract', path: 'abstract.png', sentenceIds: ['sentence-mechanism'], permission: 'permitted', permissionRecord: { schemaVersion: 1, assetId: 'abstract', reference: 'abstract-license.txt' }, generationRecord: { schemaVersion: 1, assetId: 'abstract', provider: 'offline-fixture', reference: 'generation.json' } },
+    { schemaVersion: 1, id: 'music', kind: 'music', path: 'music.wav', sentenceIds: [], permission: 'permitted', permissionRecord: { schemaVersion: 1, assetId: 'music', reference: 'music-license.txt' } },
+  ] });
+  for (const name of ['clip.mp4', 'clip-license.txt', 'abstract.png', 'abstract-license.txt', 'generation.json', 'music.wav', 'music-license.txt']) await writeFile(join(f.store.root, name), `offline resource double: ${name}`);
+  await f.store.writeJson('asset-manifest.json', assetManifestSchema, assets);
+  await writeEditPlan(f.store, probe, assets, { tone: 'neutral', informationDensity: 'normal' });
+  return f;
+}

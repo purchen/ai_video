@@ -23,7 +23,7 @@ import type { AudioProbe, AudioConverter } from '../voice/probe-audio';
 import { resolveManagedMediaTools, probeMedia, assertRenderedMedia } from '../render/media-tools';
 import { renderVideo, boundedLocalFile } from '../render/render-video';
 import { validateRenderInputs } from '../render/validate-inputs';
-import { inspectQc, persistQc, qcReportSchema, type QcDependencies } from '../qc/run-qc';
+import { inspectQc, persistQc, qcReportSchema, selectedResourcePaths, validateSelectedResources, type QcDependencies } from '../qc/run-qc';
 import { withProjectLock } from './project-lock';
 export { withProjectLock } from './project-lock';
 
@@ -55,6 +55,15 @@ const artifactNames = ['topic-candidates.json', 'sources.json', 'topic-card.json
 async function artifactHashes(root: string): Promise<Record<string, string>> {
   const result: Record<string, string> = {};
   for (const name of artifactNames) { try { result[name] = sha256Bytes(await readFile(join(root, name))); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; } }
+  // A failed QC may deliberately snapshot a malformed/missing plan. Bind its raw bytes
+  // above, and bind every available selected resource whenever the plan can be parsed.
+  let plan;
+  try { plan = editPlanSchema.safeParse(JSON.parse(await readFile(join(root, 'edit-plan.json'), 'utf8'))); }
+  catch (e) { if (!(e instanceof SyntaxError) && (e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
+  if (plan?.success) for (const name of selectedResourcePaths(plan.data)) {
+    try { result[name] = sha256Bytes(await readFile(await boundedLocalFile(root, name))); }
+    catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
+  }
   return result;
 }
 async function openStore(root: string) {
@@ -112,7 +121,10 @@ async function validateSuccessArtifacts(store: ProjectStore, manifest: ProjectMa
   if (rank >= 6) await readApprovedScript(store);
   if (rank >= 7) {
     const voice = await readCommittedVoice(store, await audioProbe(deps));
-    if (rank >= 8) validateRenderInputs(await store.readJson('edit-plan.json', editPlanSchema), { approvedScript: await readApprovedScript(store), voiceReport: voice.report, timings: voice.timings, sources: manifest.sources });
+    if (rank >= 8) {
+      const plan = validateRenderInputs(await store.readJson('edit-plan.json', editPlanSchema), { approvedScript: await readApprovedScript(store), voiceReport: voice.report, timings: voice.timings, sources: manifest.sources });
+      await validateSelectedResources(store.root, plan, await store.readJson('asset-manifest.json', assetManifestSchema));
+    }
     if (rank >= 9) assertRenderedMedia(await (deps.probeMedia ?? probeMedia)(join(store.root, 'output/final.mp4')), voice.report.durationMs);
   }
   if (rank >= 10) {
@@ -124,8 +136,17 @@ async function validateSuccessArtifacts(store: ProjectStore, manifest: ProjectMa
 }
 export async function readWorkflowStatus(root: string, deps: StageDependencies = {}) {
   const store = await openStore(root); const manifest = await store.readJson('project.json', projectManifestSchema); const journal = await loadJournal(store, manifest);
-  await validateSuccessArtifacts(store, manifest, deps);
-  return { state: journal?.state ?? manifest.workflowState, lastSuccessfulState: manifest.workflowState, message: journal?.message ?? '', artifacts: Object.keys(await artifactHashes(store.root)).map(path => join(store.root, path)), projectId: manifest.id };
+  const diagnostics: Array<{ check: string; message: string }> = [];
+  try { await validateSuccessArtifacts(store, manifest, deps); }
+  catch (error) {
+    if (!journal || !failed(journal.state)) throw error;
+    diagnostics.push({ check: 'current-artifacts', message: error instanceof Error ? error.message : String(error) });
+  }
+  if (journal?.state === 'FAILED_QC') {
+    try { const report = qcReportSchema.parse(JSON.parse(await readFile(join(store.root, 'reports/qc.json'), 'utf8'))); diagnostics.push(...report.errors); }
+    catch (error) { diagnostics.push({ check: 'qc-report', message: error instanceof Error ? error.message : String(error) }); }
+  }
+  return { state: journal?.state ?? manifest.workflowState, lastSuccessfulState: manifest.workflowState, message: journal?.message ?? '', diagnostics, artifacts: Object.keys(await artifactHashes(store.root)).map(path => join(store.root, path)), projectId: manifest.id };
 }
 function nextCommand(state: WorkflowState): StageCommand | undefined {
   const next: Partial<Record<WorkflowState, StageCommand>> = { DISCOVERED: 'research', RESEARCHED: 'research', TOPIC_APPROVED: 'draft-script', SCRIPT_APPROVED: 'voice', VOICE_READY: 'edit-plan', EDIT_PLAN_READY: 'render', RENDERED: 'qc', QC_PASSED: 'finish' };
@@ -168,7 +189,8 @@ async function researchContext(store: ProjectStore, preferredId?: string) {
 async function stageInput(store: ProjectStore, command: StageCommand, deps: StageDependencies): Promise<string> {
   const all = await artifactHashes(store.root);
   const names: Partial<Record<StageCommand, string[]>> = { discover: [], research: ['topic-candidates.json'], 'approve-topic': ['topic-candidates.json', 'sources.json'], 'draft-script': ['topic-card.json', 'sources.json'], 'approve-script': ['script-draft.json', 'sources.json'], voice: ['approved-script.json'], 'import-voice': ['approved-script.json', 'voice/manual-current.json'], 'edit-plan': ['approved-script.json', 'voice/current.json'], render: ['edit-plan.json', 'voice/current.json', 'asset-manifest.json'], qc: artifactNames, finish: ['output/final.mp4', 'edit-plan.json'] };
-  return hashCanonicalJson({ artifacts: Object.fromEntries((names[command] ?? []).map(n => [n, all[n] ?? null])), sources: deps.sources ?? null, assets: deps.assets ?? null, audio: deps.audioPath ? sha256Bytes(await readFile(deps.audioPath)) : null, authorization: deps.authorization ?? null, candidate: deps.candidateId ?? null, model: deps.languageModel?.id ?? null, feeds: command === 'discover' ? deps.topicAdapters?.map(a => a.id) ?? [] : null });
+  const resources = Object.fromEntries(Object.entries(all).filter(([name]) => !artifactNames.includes(name)));
+  return hashCanonicalJson({ artifacts: Object.fromEntries((names[command] ?? []).map(n => [n, all[n] ?? null])), ...(Object.keys(resources).length && ['render', 'qc'].includes(command) ? { resources } : {}), sources: deps.sources ?? null, assets: deps.assets ?? null, audio: deps.audioPath ? sha256Bytes(await readFile(deps.audioPath)) : null, authorization: deps.authorization ?? null, candidate: deps.candidateId ?? null, model: deps.languageModel?.id ?? null, feeds: command === 'discover' ? deps.topicAdapters?.map(a => a.id) ?? [] : null });
 }
 async function persistedVoiceAttempt(store: ProjectStore): Promise<string | undefined> {
   let ids: string[];
@@ -183,7 +205,10 @@ async function executeStage(store: ProjectStore, command: StageCommand, deps: St
   const inputHash = await stageInput(store, command, deps);
   if (command === 'draft-script' && manifest.workflowState !== 'TOPIC_APPROVED') throw new Error('TOPIC_APPROVED is required before DRAFT_SCRIPT');
   if (command !== 'qc') await validateSuccessArtifacts(store, manifest, deps);
-  if (old?.cache[command]?.inputHash === inputHash && !failed(old.state) && !['approve-topic', 'approve-script', 'draft-script'].includes(command)) return old.state;
+  if (old?.cache[command]?.inputHash === inputHash && !failed(old.state) && !['approve-topic', 'approve-script', 'draft-script'].includes(command)) {
+    if (command === 'qc') await validateSuccessArtifacts(store, manifest, deps);
+    return old.state;
+  }
   let attemptId = old?.attemptId;
   if (command === 'voice' && !attemptId) attemptId = await persistedVoiceAttempt(store) ?? randomUUID();
   if (command === 'voice') { await saveJournal(store, old, 'BLOCKED_PROVIDER', command, inputHash, 'voice attempt prepared; not yet completed', attemptId); old = await loadJournal(store, manifest); }
@@ -249,7 +274,6 @@ async function executeStage(store: ProjectStore, command: StageCommand, deps: St
       }
       case 'edit-plan': {
         requireState('VOICE_READY'); const assets = deps.assets ?? { schemaVersion: 1, projectId: manifest.id, assets: [] };
-        if (assets.assets.some(a => a.permission !== 'permitted')) throw new Blocked('BLOCKED_PERMISSION', 'asset permission unclear; supply permitted --assets or remove unavailable assets');
         await store.writeJson('asset-manifest.json', assetManifestSchema, assets); await writeEditPlan(store, await audioProbe(deps), assets); await update(transition(manifest.workflowState, 'BUILD_EDIT_PLAN')); break;
       }
       case 'render': {

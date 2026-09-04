@@ -3,7 +3,7 @@ import { basename, dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { projectManifestSchema } from '../domain/schemas';
-import { assetManifestSchema, editPlanSchema } from '../edit/build-edit-plan';
+import { assetManifestSchema, editPlanSchema, type EditPlan, type AssetManifest } from '../edit/build-edit-plan';
 import { readApprovedScript, readApprovedTopic } from '../review/approve';
 import { boundedLocalFile } from '../render/render-video';
 import { assertRenderedMedia, probeMedia, resolveManagedMediaTools, type MediaMetadata } from '../render/media-tools';
@@ -13,10 +13,30 @@ import { readCommittedVoice } from '../voice/generate-voice';
 import type { AudioProbe } from '../voice/probe-audio';
 import { withProjectLock } from '../workflow/project-lock';
 import { sha256Bytes } from '../voice/artifacts';
+import { hashCanonicalJson } from '../script/hash-script';
 
 export const qcReportSchema = z.object({ schemaVersion: z.literal(1), checkedAt: z.string().datetime(), status: z.enum(['QC_PASSED', 'FAILED_QC']), errors: z.array(z.object({ check: z.string(), message: z.string() })), artifacts: z.array(z.string()), inputHashes: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)) });
 export type QcReport = z.infer<typeof qcReportSchema>;
 export interface QcDependencies { probe?: AudioProbe; probeMedia?: (path: string) => Promise<MediaMetadata> }
+
+/** Only final selected resources are authoritative; unused unknown candidates are safely ignored. */
+export function selectedResourcePaths(plan: EditPlan): string[] {
+  const selected = plan.scenes.flatMap(s => 'asset' in s.visual ? [s.visual.asset] : []);
+  if (plan.music.mode === 'ambient') selected.push(plan.music.asset);
+  return [...new Set(selected.flatMap(a => [a.path, a.permissionRecord.reference, ...(a.generationRecord ? [a.generationRecord.reference] : [])]))].sort();
+}
+export async function validateSelectedResources(root: string, plan: EditPlan, assets: AssetManifest): Promise<void> {
+  if (assets.projectId !== plan.projectId) throw new Error('selected asset project mismatch');
+  const selected = plan.scenes.flatMap(s => 'asset' in s.visual ? [s.visual.asset] : []);
+  if (plan.music.mode === 'ambient') selected.push(plan.music.asset);
+  for (const a of selected) {
+    const source = assets.assets.find(v => v.id === a.assetId);
+    if (!source || source.permission !== 'permitted' || source.path !== a.path
+      || hashCanonicalJson(source.permissionRecord ?? null) !== hashCanonicalJson(a.permissionRecord)
+      || hashCanonicalJson(source.generationRecord ?? null) !== hashCanonicalJson(a.generationRecord ?? null)) throw new Error(`selected asset ${a.assetId} lacks matching permission/generation provenance`);
+  }
+  for (const path of selectedResourcePaths(plan)) await boundedLocalFile(root, path);
+}
 
 /** Read-only aggregate inspection; the public writer and workflow own the process lock. */
 export async function inspectQc(root: string, dependencies: QcDependencies = {}): Promise<QcReport> {
@@ -30,26 +50,13 @@ export async function inspectQc(root: string, dependencies: QcDependencies = {})
   const assets = await check('assets', async () => {
     const value = await store.readJson('asset-manifest.json', assetManifestSchema);
     if (manifest && value.projectId !== manifest.id) throw new Error('asset project mismatch');
-    const issues: string[] = [];
-    for (const a of value.assets) {
-      if (a.permission !== 'permitted' || !a.permissionRecord) { issues.push(`${a.id}: permission required`); continue; }
-      for (const path of [a.path, a.permissionRecord.reference, ...(a.generationRecord ? [a.generationRecord.reference] : [])]) {
-        try { await boundedLocalFile(root, path); } catch (e) { issues.push(`${a.id}: ${path}: ${String(e)}`); }
-      }
-    }
-    if (issues.length) throw new Error(issues.join('; '));
     return value;
   });
-  await check('edit-plan', async () => {
+  const plan = await check('edit-plan', async () => {
     const plan = await store.readJson('edit-plan.json', editPlanSchema);
     if (!manifest || !approved || !voice || !assets) throw new Error('validate manifest, approvals, voice and assets before edit plan');
     validateRenderInputs(plan, { approvedScript: approved, voiceReport: voice.report, timings: voice.timings, sources: manifest.sources });
-    const selected = plan.scenes.flatMap(s => 'asset' in s.visual ? [s.visual.asset] : []);
-    if (plan.music.mode === 'ambient') selected.push(plan.music.asset);
-    for (const a of selected) {
-      const source = assets.assets.find(v => v.id === a.assetId);
-      if (!source || source.permission !== 'permitted' || source.path !== a.path || source.permissionRecord?.reference !== a.permissionRecord.reference) throw new Error(`selected asset ${a.assetId} lacks matching permission`);
-    }
+    await validateSelectedResources(root, plan, assets);
     return plan;
   });
   await check('media', async () => {
@@ -58,7 +65,7 @@ export async function inspectQc(root: string, dependencies: QcDependencies = {})
     // Even when another artifact is invalid, inspect stream/geometry independently.
     assertRenderedMedia(info, voice?.report.durationMs ?? info.format.duration * 1000);
   });
-  const artifacts = ['topic-card.json', 'topic-approval.commit.json', 'approved-script.json', 'script-approval.commit.json', 'asset-manifest.json', 'edit-plan.json', 'voice/current.json', 'output/final.mp4'];
+  const artifacts = ['topic-card.json', 'topic-approval.commit.json', 'approved-script.json', 'script-approval.commit.json', 'asset-manifest.json', 'edit-plan.json', 'voice/current.json', 'output/final.mp4', ...(plan ? selectedResourcePaths(plan) : [])];
   const inputHashes: Record<string, string> = {};
   for (const path of artifacts) await check(`hash:${path}`, async () => { inputHashes[path] = sha256Bytes(await readFile(await boundedLocalFile(root, path))); });
   return qcReportSchema.parse({ schemaVersion: 1, checkedAt: new Date().toISOString(), status: errors.length ? 'FAILED_QC' : 'QC_PASSED', errors, artifacts: ['project.json', ...artifacts, ...(voice ? [voice.masterPath] : [])], inputHashes });
