@@ -35,7 +35,7 @@ const journalBodySchema = z.object({
   manifestHash: sha256Schema, artifactHashes: z.record(z.string(), sha256Schema),
   state: workflowStateSchema, lastSuccessfulState: workflowStateSchema,
   stage: commandSchema, inputHash: sha256Schema, attemptId: transactionIdSchema.optional(),
-  message: z.string(), updatedAt: z.string().datetime(),
+  message: z.string(), updatedAt: z.string().datetime(), voiceId: z.string().trim().min(1).optional(),
   cache: z.record(z.string(), z.object({ inputHash: sha256Schema, state: workflowStateSchema })),
 });
 const journalSchema = journalBodySchema.extend({ hash: sha256Schema });
@@ -43,6 +43,8 @@ type Journal = z.infer<typeof journalSchema>;
 const eventSchema = z.object({ schemaVersion: z.literal(1), sequence: z.number().int().positive(), previousHash: sha256Schema.nullable(), journal: journalSchema, hash: sha256Schema });
 
 export interface StageDependencies extends QcDependencies {
+  /** Explicit standard synthetic voice; personalized voices retain the authorized import route. */
+  voiceId?: string;
   sources?: ResearchSource[]; topicAdapters?: TopicSourceAdapter[]; now?: Date;
   languageModel?: LanguageModelAdapter; registry?: ProviderRegistry; converter?: AudioConverter;
   assets?: AssetManifest; actor?: string; candidateId?: string; audioPath?: string;
@@ -100,10 +102,10 @@ async function loadJournal(store: ProjectStore, manifest: ProjectManifest): Prom
   }
   return value;
 }
-async function saveJournal(store: ProjectStore, old: Journal | undefined, state: WorkflowState, stage: StageCommand, inputHash: string, message: string, attemptId?: string): Promise<void> {
+async function saveJournal(store: ProjectStore, old: Journal | undefined, state: WorkflowState, stage: StageCommand, inputHash: string, message: string, attemptId?: string, voiceId?: string): Promise<void> {
   const manifest = await store.readJson('project.json', projectManifestSchema); const cache = { ...old?.cache };
   if (!failed(state)) cache[stage] = { inputHash, state };
-  const body = journalBodySchema.parse({ schemaVersion: 1, projectId: manifest.id, sequence: (old?.sequence ?? 0) + 1, manifestHash: hashCanonicalJson(manifest), artifactHashes: await artifactHashes(store.root), state, lastSuccessfulState: manifest.workflowState, stage, inputHash, attemptId, message, updatedAt: new Date().toISOString(), cache });
+  const body = journalBodySchema.parse({ schemaVersion: 1, projectId: manifest.id, sequence: (old?.sequence ?? 0) + 1, manifestHash: hashCanonicalJson(manifest), artifactHashes: await artifactHashes(store.root), state, lastSuccessfulState: manifest.workflowState, stage, inputHash, attemptId, voiceId: voiceId ?? old?.voiceId, message, updatedAt: new Date().toISOString(), cache });
   const journal = journalSchema.parse({ ...body, hash: hashCanonicalJson(body) }); let previousHash: string | null = null;
   if (old) { const lines = (await readFile(join(store.root, 'workflow-events.jsonl'), 'utf8')).trim().split('\n'); previousHash = eventSchema.parse(JSON.parse(lines.at(-1)!)).hash; }
   const eventBody = { schemaVersion: 1 as const, sequence: body.sequence, previousHash, journal };
@@ -202,7 +204,12 @@ async function persistedVoiceAttempt(store: ProjectStore): Promise<string | unde
 }
 async function executeStage(store: ProjectStore, command: StageCommand, deps: StageDependencies, manifest: ProjectManifest, old?: Journal): Promise<WorkflowState> {
   const previousManifest = manifest;
-  const inputHash = await stageInput(store, command, deps);
+  const voiceId = command === 'voice' ? z.string().trim().min(1).parse(deps.voiceId ?? 'alloy') : undefined;
+  // Old journals predate configurable voices and therefore bind the original alloy default.
+  // Reject before rewriting the durable identity, including ambiguous/recoverable attempts.
+  if (command === 'voice' && old?.attemptId && (old.voiceId ?? 'alloy') !== voiceId) throw new Error('voice selection changed for an existing attempt; manual recovery or a new reviewed project is required');
+  const stageHash = await stageInput(store, command, deps);
+  const inputHash = voiceId && voiceId !== 'alloy' ? hashCanonicalJson({ stageHash, voiceId }) : stageHash;
   if (command === 'draft-script' && manifest.workflowState !== 'TOPIC_APPROVED') throw new Error('TOPIC_APPROVED is required before DRAFT_SCRIPT');
   if (command !== 'qc') await validateSuccessArtifacts(store, manifest, deps);
   if (old?.cache[command]?.inputHash === inputHash && !failed(old.state) && !['approve-topic', 'approve-script', 'draft-script'].includes(command)) {
@@ -210,8 +217,18 @@ async function executeStage(store: ProjectStore, command: StageCommand, deps: St
     return old.state;
   }
   let attemptId = old?.attemptId;
-  if (command === 'voice' && !attemptId) attemptId = await persistedVoiceAttempt(store) ?? randomUUID();
-  if (command === 'voice') { await saveJournal(store, old, 'BLOCKED_PROVIDER', command, inputHash, 'voice attempt prepared; not yet completed', attemptId); old = await loadJournal(store, manifest); }
+  if (command === 'voice' && !attemptId) {
+    const persisted = await persistedVoiceAttempt(store);
+    if (persisted) {
+      const audit = await readVoiceAttemptAudit(store, persisted);
+      // A lower-level transaction can exist before an orchestration journal. Never
+      // recover its completed audio as a different voice or rebind an unknown call.
+      if ((audit.result && audit.result.marker.authorizationReference !== `synthetic:voice:${voiceId}`)
+        || (!audit.result && audit.attempt.status === 'RESERVED')) throw new Error('voice selection changed or cannot be established for the existing attempt; manual recovery required');
+    }
+    attemptId = persisted ?? randomUUID();
+  }
+  if (command === 'voice') { await saveJournal(store, old, 'BLOCKED_PROVIDER', command, inputHash, 'voice attempt prepared; not yet completed', attemptId, voiceId); old = await loadJournal(store, manifest); }
   const update = async (state: WorkflowState) => { manifest = projectManifestSchema.parse({ ...manifest, workflowState: state, updatedAt: new Date().toISOString() }); await store.writeJson('project.json', projectManifestSchema, manifest); };
   const requireState = (...states: WorkflowState[]) => { if (!states.includes(manifest.workflowState)) throw new Error(`${states.join(' or ')} is required before ${command}`); };
   try {
@@ -250,19 +267,19 @@ async function executeStage(store: ProjectStore, command: StageCommand, deps: St
         let audit;
         try { await readFile(join(store.root, 'voice/audit', attemptId!, 'attempt.json')); audit = await readVoiceAttemptAudit(store, attemptId!); } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e; }
         if (audit?.result && audit.attempt.status !== 'OVER_AUTHORIZATION') {
-          await generateVoice({ store, registry, budgetGuard, attemptId: attemptId!, requestedScriptHash: approved.scriptHash, probe: await audioProbe(deps) });
+          await generateVoice({ store, registry, budgetGuard, attemptId: attemptId!, requestedScriptHash: approved.scriptHash, voice: { voiceId: voiceId!, kind: 'synthetic' }, probe: await audioProbe(deps) });
           await update(transition(manifest.workflowState, 'GENERATE_VOICE')); break;
         }
         if (audit && audit.attempt.status !== 'RESERVED') throw new Blocked('BLOCKED_PROVIDER', `voice attempt ${attemptId} requires manual provider reconciliation; retry will not issue a new paid call`);
-        const auth = { schemaVersion: 1, authorization: 'synthetic', voiceId: 'alloy', identifier: 'synthetic:voice:alloy' };
-        const request: TtsRequest = { idempotencyKey: `voice:${manifest.id}:${approved.scriptHash}:${attemptId}`, approvedScriptHash: approved.scriptHash, text: scriptNarrationText(approved.script), voiceId: 'alloy', voiceKind: 'synthetic', authorization: 'synthetic', authorizationReference: auth.identifier, authorizationHash: hashCanonicalJson(auth), outputPath: join(store.root, 'voice/transactions', attemptId!, 'master.tmp.wav') };
+        const auth = { schemaVersion: 1, authorization: 'synthetic', voiceId: voiceId!, identifier: `synthetic:voice:${voiceId}` };
+        const request: TtsRequest = { idempotencyKey: `voice:${manifest.id}:${approved.scriptHash}:${attemptId}`, approvedScriptHash: approved.scriptHash, text: scriptNarrationText(approved.script), voiceId: voiceId!, voiceKind: 'synthetic', authorization: 'synthetic', authorizationReference: auth.identifier, authorizationHash: hashCanonicalJson(auth), outputPath: join(store.root, 'voice/transactions', attemptId!, 'master.tmp.wav') };
         const adapter = await registry.selectAvailableTts(request); const estimate = costRecordSchema.parse(await adapter.estimate(request)); deps.print?.(`Estimate: ${estimate.amount} CNY (${estimate.providerId}; ${estimate.basis})`);
         if (adapter.mode === 'manual') { await createManualVoicePackage({ store, requestedScriptHash: approved.scriptHash }); throw new Blocked('BLOCKED_PROVIDER', 'manual narration package prepared; use import-voice --audio <file> --rights <rights.json>'); }
         if (deps.dryRun || deps.limitCny === undefined && deps.currentCallMaxCny === undefined) throw new Blocked('BLOCKED_PROVIDER', 'dry-run only; configure --budget-cny or --approve-cost-cny and explicit --consent-by/--consent-reference');
         if (deps.currentCallMaxCny !== undefined && estimate.amount > deps.currentCallMaxCny) throw new Blocked('BLOCKED_PROVIDER', 'estimate exceeds current-call approval');
         const consent = z.object({ actor: z.string().trim().min(1), reference: z.string().trim().min(1) }).parse(deps.consent);
         await store.appendEvent({ id: randomUUID(), type: 'PROVIDER_CONSENT', occurredAt: new Date().toISOString(), data: { ...consent, providerId: adapter.id, attemptId, estimate, currentCallMaxCny: deps.currentCallMaxCny } });
-        const result = await generateVoice({ store, registry, budgetGuard, attemptId: attemptId!, requestedScriptHash: approved.scriptHash, probe: await audioProbe(deps), converter: deps.converter });
+        const result = await generateVoice({ store, registry, budgetGuard, attemptId: attemptId!, requestedScriptHash: approved.scriptHash, voice: { voiceId: voiceId!, kind: 'synthetic' }, probe: await audioProbe(deps), converter: deps.converter });
         if (result.status !== 'READY') throw new Blocked('BLOCKED_PROVIDER', 'manual narration required; use import-voice');
         await update(transition(manifest.workflowState, 'GENERATE_VOICE')); break;
       }

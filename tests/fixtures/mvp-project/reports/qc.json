@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-09-04T02:56:45.155Z",
+  "status": "QC_PASSED",
+  "errors": [],
+  "artifacts": [
+    "project.json",
+    "topic-card.json",
+    "topic-approval.commit.json",
+    "approved-script.json",
+    "script-approval.commit.json",
+    "asset-manifest.json",
+    "edit-plan.json",
+    "voice/current.json",
+    "output/final.mp4",
+    "E:\\MyProject\\视屏号设计\\.worktrees\\short-video-mvp\\tests\\fixtures\\mvp-project\\voice\\transactions\\75c9c785-1282-4090-bde3-f130753c26d1\\master.wav"
+  ],
+  "inputHashes": {
+    "topic-card.json": "5fd876c6b2e3906d70c7eb23cbe173f4db06b7dde6ef07d7509d391d8af21c1c",
+    "topic-approval.commit.json": "4899b1ecc3e3d68737df33f236a71f3018faed3cd792525f8980a4e89c92ed88",
+    "approved-script.json": "77d4dc296be804d9c69cbc6641af886b80459a8c3a85e85c91c3c79eaef768de",
+    "script-approval.commit.json": "7437ba75b869c6f3512a1768ac33cd810f768b96f331dc5d5f27fcbe1569b7ea",
+    "asset-manifest.json": "214d39f3de7b7cd95eabb53341c638e96f7dbf6623769960bde91f883563f025",
+    "edit-plan.json": "68458a0978f260a9d48153c3b2ca401fa5c4a2015ff73e567083c7e1615d6c4e",
+    "voice/current.json": "e79803f6dc8cc6b873928136a67eac331697aa764e38a4ff118fa59053403333",
+    "output/final.mp4": "eab69081f5c14599dbd8b94a905f9ae72cec34e2b94693a9b578c00b83a4c0c5"
+  }
+}

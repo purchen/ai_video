@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "providerId": "windows-system-speech-fixture",
+  "model": "System.Speech / Microsoft Huihui Desktop / zh-CN / rate 2",
+  "voiceId": "Microsoft Huihui Desktop",
+  "voiceKind": "synthetic",
+  "sourceKind": "windows-built-in-synthetic",
+  "generatedAt": "2026-09-04T02:51:34.6549046Z",
+  "narrationSha256": "eb0901b7e8d43441373269d0b410eacda92f087702508221275036baa4c7742f",
+  "audioSha256": "a6cde3634f03b28f7685c432b8c79027c6608b57379cce8d4ae54a5f0b3c3220",
+  "provenance": "Locally synthesized from canonical original fixture text using an installed Windows built-in synthetic voice. No human recording, cloning, Jianying, OpenAI call, paid API, remote source, or publication.",
+  "rightsScope": "Offline test and inspection only; not a claim of commercial redistribution clearance for Microsoft voice output."
+}

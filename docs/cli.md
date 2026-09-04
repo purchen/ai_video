@@ -1,5 +1,7 @@
 # Local workflow CLI
 
+For stage routing, editorial boundaries and the speech-bearing acceptance sample, see [workflow usage](workflow.md). The older `complete-project` below remains a tone-only technical fixture.
+
 Use `npm run dev -- <command> --project <path-or-id>`. A bare ID resolves beneath `projects/` (override with `--projects-dir`). A relative/absolute path is resolved as a directory, never passed as a ProjectStore ID. Exit codes: **0** successful/read-only, **2** blocked or manual action, **1** failure/invalid invocation. `next` advances one stage only and stops for human review. There is no publishing command.
 
 ## Offline/manual model boundary

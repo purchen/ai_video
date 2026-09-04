@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "schemaVersion": 1,
+      "id": "synthetic-diary",
+      "url": "https://example.invalid/synthetic-test-diary",
+      "title": "合成测试数据：两晚的原创虚构日记",
+      "publisher": "合成测试数据（非新闻）",
+      "summary": "原创虚构例子：第一晚列十项任务只完成两项；第二晚只选一项并记录下一步。不是采访、统计或真实人物经历。",
+      "sourceType": "primary",
+      "evidenceWeight": "high",
+      "capturedAt": "2026-09-04T00:00:00.000Z",
+      "claim": {
+        "key": "fictional-diary",
+        "value": "affirmed",
+        "text": "本测试虚构日记第一晚列十项任务完成两项，第二晚只选一项并记录下一步。"
+      }
+    }
+  ]
+}

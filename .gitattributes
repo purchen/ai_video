@@ -1,2 +1,3 @@
 # Transaction markers hash exact bytes. Do not apply platform newline conversion.
 tests/fixtures/complete-project/** -text
+tests/fixtures/mvp-project/** -text

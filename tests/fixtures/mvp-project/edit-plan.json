@@ -1,0 +1,460 @@
+{
+  "schemaVersion": 1,
+  "projectId": "mvp-project",
+  "approvedScriptHash": "41cb6dafa23968c4f17048444b38bca0d6db1b3bca2f1e950498002fc6513f98",
+  "voiceReportHash": "ea650222af2651fccd46912476af74fb75fb16736b9088c40473389d128b9f4c",
+  "voice": {
+    "masterPath": "voice/transactions/75c9c785-1282-4090-bde3-f130753c26d1/master.wav",
+    "durationMs": 109040
+  },
+  "scenes": [
+    {
+      "id": "scene-s1a",
+      "section": "question-hook",
+      "scriptSentenceIds": [
+        "s1a"
+      ],
+      "startMs": 0,
+      "endMs": 7853,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "今天没做完，就算失败吗？这是一条原创思考测试样片，旁白由系统合成，例子完全虚构。"
+      }
+    },
+    {
+      "id": "scene-s1b",
+      "section": "question-hook",
+      "scriptSentenceIds": [
+        "s1b"
+      ],
+      "startMs": 7853,
+      "endMs": 15257,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "你有没有在睡前翻开清单，只看见没打勾的事情，却忘了自己已经往前走了几步？"
+      }
+    },
+    {
+      "id": "scene-s2a",
+      "section": "fact-baseline",
+      "scriptSentenceIds": [
+        "s2a"
+      ],
+      "startMs": 15257,
+      "endMs": 23558,
+      "visual": {
+        "kind": "source-card",
+        "sources": [
+          {
+            "schemaVersion": 1,
+            "id": "synthetic-diary",
+            "url": "https://example.invalid/synthetic-test-diary",
+            "title": "合成测试数据：两晚的原创虚构日记",
+            "publisher": "合成测试数据（非新闻）",
+            "summary": "原创虚构例子：第一晚列十项任务只完成两项；第二晚只选一项并记录下一步。不是采访、统计或真实人物经历。",
+            "sourceType": "primary",
+            "evidenceWeight": "high",
+            "capturedAt": "2026-09-04T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "scene-s2b",
+      "section": "fact-baseline",
+      "scriptSentenceIds": [
+        "s2b"
+      ],
+      "startMs": 23558,
+      "endMs": 31859,
+      "visual": {
+        "kind": "source-card",
+        "sources": [
+          {
+            "schemaVersion": 1,
+            "id": "synthetic-diary",
+            "url": "https://example.invalid/synthetic-test-diary",
+            "title": "合成测试数据：两晚的原创虚构日记",
+            "publisher": "合成测试数据（非新闻）",
+            "summary": "原创虚构例子：第一晚列十项任务只完成两项；第二晚只选一项并记录下一步。不是采访、统计或真实人物经历。",
+            "sourceType": "primary",
+            "evidenceWeight": "high",
+            "capturedAt": "2026-09-04T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "scene-s3a",
+      "section": "strong-evidence",
+      "scriptSentenceIds": [
+        "s3a"
+      ],
+      "startMs": 31859,
+      "endMs": 38815,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "这个例子不能证明少做事一定更好，也不是对所有人的生活给出统一答案。"
+      }
+    },
+    {
+      "id": "scene-s3b",
+      "section": "strong-evidence",
+      "scriptSentenceIds": [
+        "s3b"
+      ],
+      "startMs": 38815,
+      "endMs": 46892,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "它只是把一个问题摆在眼前：我们究竟在衡量真实的进展，还是在惩罚没有实现的计划？"
+      }
+    },
+    {
+      "id": "scene-s4a",
+      "section": "mechanism",
+      "scriptSentenceIds": [
+        "s4a"
+      ],
+      "startMs": 46892,
+      "endMs": 54969,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "我的理解是，清单本来应该帮助选择；如果每一项都同样重要，选择反而被推回给了焦虑。"
+      }
+    },
+    {
+      "id": "scene-s4b",
+      "section": "mechanism",
+      "scriptSentenceIds": [
+        "s4b"
+      ],
+      "startMs": 54969,
+      "endMs": 63943,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "不妨把任务写得更具体：不是今晚改变人生，而是读完两页，整理一份材料，或者把一个问题问清楚。"
+      }
+    },
+    {
+      "id": "scene-s5a",
+      "section": "counter-evidence",
+      "scriptSentenceIds": [
+        "s5a"
+      ],
+      "startMs": 63943,
+      "endMs": 69777,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "当然，有些期限不能推迟，有些责任也不能靠一句放轻松就消失。"
+      }
+    },
+    {
+      "id": "scene-s5b",
+      "section": "counter-evidence",
+      "scriptSentenceIds": [
+        "s5b"
+      ],
+      "startMs": 69777,
+      "endMs": 78527,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "如果有紧急任务，先看影响和期限，再决定顺序；需要帮助时，可以把困难讲清楚，而不是独自硬撑。"
+      }
+    },
+    {
+      "id": "scene-s6a",
+      "section": "judgment",
+      "scriptSentenceIds": [
+        "s6a"
+      ],
+      "startMs": 78527,
+      "endMs": 85706,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "所以我更愿意把一天的复盘分成两栏：一栏记录做成了什么，一栏留下下一步。"
+      }
+    },
+    {
+      "id": "scene-s6b",
+      "section": "judgment",
+      "scriptSentenceIds": [
+        "s6b"
+      ],
+      "startMs": 85706,
+      "endMs": 94681,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "没有完成的事情仍然值得处理，但它不必变成对整个人的否定；休息，也可以是认真安排的一部分。"
+      }
+    },
+    {
+      "id": "scene-s7a",
+      "section": "closing-question",
+      "scriptSentenceIds": [
+        "s7a"
+      ],
+      "startMs": 94681,
+      "endMs": 101412,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "今晚，你能不能先承认一件已经做好的小事，再选出明天最想推进的一步？"
+      }
+    },
+    {
+      "id": "scene-s7b",
+      "section": "closing-question",
+      "scriptSentenceIds": [
+        "s7b"
+      ],
+      "startMs": 101412,
+      "endMs": 109040,
+      "visual": {
+        "kind": "kinetic-text",
+        "text": "这不是效率竞赛，也不是成功秘诀，只是给普通的一天，留下一种更诚实的评价方式。"
+      }
+    }
+  ],
+  "captions": [
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s1a",
+      "text": "今天没做完就算失败吗这是一条原创思",
+      "startMs": 0,
+      "endMs": 3814
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s1a",
+      "text": "考测试样片旁白由系统合成例子完全虚构",
+      "startMs": 3814,
+      "endMs": 7853
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s1b",
+      "text": "你有没有在睡前翻开清单只看见没",
+      "startMs": 7853,
+      "endMs": 11218
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s1b",
+      "text": "打勾的事情却忘了自己已经往前走了几步",
+      "startMs": 11218,
+      "endMs": 15257
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s2a",
+      "text": "在这份合成测试日记里",
+      "startMs": 15257,
+      "endMs": 17500
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s2a",
+      "text": "第一晚列了十项任务",
+      "startMs": 17500,
+      "endMs": 19520
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s2a",
+      "text": "只完成两项写下的评价却是今天毫无进展",
+      "startMs": 19520,
+      "endMs": 23558
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s2b",
+      "text": "第二晚虚",
+      "startMs": 23558,
+      "endMs": 24455
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s2b",
+      "text": "构的记录者只选一件最重要的小事",
+      "startMs": 24455,
+      "endMs": 27821
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s2b",
+      "text": "完成之后再写下明天可以接着做的下一步",
+      "startMs": 27821,
+      "endMs": 31859
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s3a",
+      "text": "这个例子不能证明少做事一定更好",
+      "startMs": 31859,
+      "endMs": 35225
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s3a",
+      "text": "也不是对所有人的生活给出统一答案",
+      "startMs": 35225,
+      "endMs": 38815
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s3b",
+      "text": "它只是把一个问题摆在眼前我们究竟在衡",
+      "startMs": 38815,
+      "endMs": 42853
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s3b",
+      "text": "量真实的进展还是在惩罚没有实现的计划",
+      "startMs": 42853,
+      "endMs": 46892
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s4a",
+      "text": "我的理解是清单本来应该帮助选择如果每",
+      "startMs": 46892,
+      "endMs": 50930
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s4a",
+      "text": "一项都同样重要选择反而被推回给了焦虑",
+      "startMs": 50930,
+      "endMs": 54969
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s4b",
+      "text": "不妨把任务写得更具体",
+      "startMs": 54969,
+      "endMs": 57212
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s4b",
+      "text": "不是今晚改变人生而是读完两页",
+      "startMs": 57212,
+      "endMs": 60353
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s4b",
+      "text": "整理一份材料或者把一个问题问清楚",
+      "startMs": 60353,
+      "endMs": 63943
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s5a",
+      "text": "当然有些期限不能推迟",
+      "startMs": 63943,
+      "endMs": 66187
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s5a",
+      "text": "有些责任也不能靠一句放轻松就消失",
+      "startMs": 66187,
+      "endMs": 69777
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s5b",
+      "text": "如果有紧急任务",
+      "startMs": 69777,
+      "endMs": 71347
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s5b",
+      "text": "先看影响和期限再决定顺序需要帮助时",
+      "startMs": 71347,
+      "endMs": 75161
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s5b",
+      "text": "可以把困难讲清楚而不是独自硬撑",
+      "startMs": 75161,
+      "endMs": 78527
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s6a",
+      "text": "所以我更愿意把一天的复盘分成两栏",
+      "startMs": 78527,
+      "endMs": 82117
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s6a",
+      "text": "一栏记录做成了什么一栏留下下一步",
+      "startMs": 82117,
+      "endMs": 85706
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s6b",
+      "text": "没有完成的事情仍然值得处理",
+      "startMs": 85706,
+      "endMs": 88623
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s6b",
+      "text": "但它不必变成对整个人的否定",
+      "startMs": 88623,
+      "endMs": 91540
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s6b",
+      "text": "休息也可以是认真安排的一部分",
+      "startMs": 91540,
+      "endMs": 94681
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s7a",
+      "text": "今晚你能不能先承认一件已经做好的小事",
+      "startMs": 94681,
+      "endMs": 98719
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s7a",
+      "text": "再选出明天最想推进的一步",
+      "startMs": 98719,
+      "endMs": 101412
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s7b",
+      "text": "这不是效率竞赛也不是成功秘诀只是",
+      "startMs": 101412,
+      "endMs": 105001
+    },
+    {
+      "schemaVersion": 1,
+      "scriptSentenceId": "s7b",
+      "text": "给普通的一天留下一种更诚实的评价方式",
+      "startMs": 105001,
+      "endMs": 109040
+    }
+  ],
+  "music": {
+    "mode": "none"
+  },
+  "warnings": [
+    "s3a uses kinetic text because no bound factual source is available",
+    "s3b uses kinetic text because no bound factual source is available",
+    "s5a uses kinetic text because no bound factual source is available",
+    "s5b uses kinetic text because no bound factual source is available"
+  ]
+}

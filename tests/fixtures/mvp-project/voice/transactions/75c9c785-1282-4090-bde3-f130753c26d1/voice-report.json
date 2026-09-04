@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "status": "READY",
+  "projectId": "mvp-project",
+  "transactionId": "75c9c785-1282-4090-bde3-f130753c26d1",
+  "approvedScriptHash": "41cb6dafa23968c4f17048444b38bca0d6db1b3bca2f1e950498002fc6513f98",
+  "providerId": "windows-system-speech-fixture",
+  "model": "System.Speech / Microsoft Huihui Desktop / zh-CN / rate 2",
+  "voiceId": "Microsoft Huihui Desktop",
+  "voiceKind": "synthetic",
+  "authorization": "synthetic",
+  "authorizationReference": "synthetic:voice:Microsoft Huihui Desktop",
+  "authorizationHash": "67e91b5a1a68f9f4b3ae26ebcfcaa74d9cf84bf9ac1c00d297a5ba1eda37c42a",
+  "durationMs": 109040,
+  "sampleRateHz": 48000,
+  "channels": 1,
+  "formatName": "wav",
+  "codecName": "pcm_s16le",
+  "integratedLufs": null,
+  "costCny": 0,
+  "generatedAt": "2026-09-04T02:54:15.287Z"
+}

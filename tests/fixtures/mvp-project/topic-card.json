@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "transactionId": "88c51f7a-b000-4f71-979c-b76d47e9e304",
+  "projectId": "mvp-project",
+  "candidateId": "candidate-1",
+  "approvedAt": "2026-09-04T02:54:15.164Z",
+  "approvedBy": "offline-fixture-editor",
+  "candidate": {
+    "title": "原创思考样片：今天没做完，就算失败吗？",
+    "normalizedTopic": "原创思考样片今天没做完就算失败吗|原创虚构例子第一晚列十项任务只完成两项第二晚只选|2026-09-04",
+    "questionHook": "原创思考样片今天没做完就算失败吗的原创虚构例子第一晚列十项任务只完成两项第二晚只选，究竟改变了什么？",
+    "sourceUrls": [
+      "https://example.invalid/synthetic-test-diary"
+    ],
+    "sourcePublishers": [
+      "合成测试数据（非新闻）"
+    ],
+    "risks": [],
+    "eligibleForRecommendation": true,
+    "score": {
+      "relevance": 5,
+      "tension": 3,
+      "evidenceAvailability": 3,
+      "independentJudgment": 4,
+      "laneFit": 3,
+      "visualDifficulty": 3,
+      "risk": 1,
+      "total": 3.6000000000000005
+    }
+  }
+}
