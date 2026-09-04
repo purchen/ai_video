@@ -1,4 +1,4 @@
-import { access, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtemp } from 'node:fs/promises';
@@ -36,18 +36,45 @@ afterEach(async () => {
 });
 
 describe('transactional manual voice package', () => {
-  it('rejects reused manual attempt before conversion without changing committed bytes', async () => {
+  it.each([false, true])('rejects reused manual attempt (uppercase alias: %s) before conversion without changing committed bytes', async (uppercaseAlias) => {
     const context = await manualContext();
+    if (uppercaseAlias) context.attemptId = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
     const request = { ...context, authorization: syntheticAuthorization() };
     await importManualVoice(request);
     const previous = await readCommittedVoice(context.store, context.probe);
     const bytes = await readFile(previous.masterPath);
     let conversions = 0;
-    await expect(importManualVoice({ ...request, converter: {
+    const mutations: string[] = [];
+    const artifactIo: VoiceArtifactIo = { ...nodeVoiceArtifactIo,
+      mkdir: async (path) => { mutations.push(path); await nodeVoiceArtifactIo.mkdir(path); },
+      writeFile: async (path, data) => { mutations.push(path); await nodeVoiceArtifactIo.writeFile(path, data); },
+      rename: async (from, to) => { mutations.push(to); await nodeVoiceArtifactIo.rename(from, to); },
+      rm: async (path) => { mutations.push(path); await nodeVoiceArtifactIo.rm(path); },
+    };
+    await expect(importManualVoice({ ...request,
+      attemptId: uppercaseAlias ? context.attemptId.toUpperCase() : context.attemptId,
+      artifactIo, converter: {
       convertToWav48k: async () => { conversions++; throw new Error('converter executed'); },
     } })).rejects.toThrow('voice attempt already exists');
     expect(conversions).toBe(0);
+    expect(mutations).toEqual([]);
     expect(await readFile((await readCommittedVoice(context.store, context.probe)).masterPath)).toEqual(bytes);
+  });
+
+  it('canonicalizes uppercase manual source identity into its immutable charge and marker', async () => {
+    const context = await manualContext();
+    const attemptId = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+    const result = await importManualVoice({ ...context, attemptId: attemptId.toUpperCase(), authorization: syntheticAuthorization() });
+    expect(result.report.transactionId).toBe(attemptId);
+    expect(await readdir(join(context.store.root, 'voice', 'transactions'))).toEqual([attemptId]);
+    const committed = await readCommittedVoice(context.store, context.probe);
+    expect(committed.report).toMatchObject({ providerId: 'jianying-manual', model: 'jianying-synthetic', transactionId: attemptId });
+    expect(committed.timings.transactionId).toBe(attemptId);
+    expect(committed.charge).toMatchObject({
+      transactionId: attemptId,
+      reservationId: attemptId,
+      idempotencyKey: `manual:topic-001:${context.approvedScript.scriptHash}:${attemptId}`,
+    });
   });
 
   it('excludes direct callers while a manual conversion owns the same attempt', async () => {

@@ -7,6 +7,7 @@ import { hashCanonicalJson } from '../../script/hash-script';
 import { scriptNarrationText } from '../../script/narration';
 import type { ProjectStore } from '../../store/project-store';
 import {
+  canonicalVoiceAttemptId,
   nodeVoiceArtifactIo,
   readJson,
   sha256File,
@@ -216,7 +217,8 @@ export interface ReadyVoiceResult {
 }
 
 export async function importManualVoice(request: ImportManualVoiceRequest): Promise<ReadyVoiceResult> {
-  return withVoiceAttempt(request.store, transactionIdSchema.parse(request.attemptId), () => importManualVoiceExclusively(request));
+  const attemptId = canonicalVoiceAttemptId(request.attemptId);
+  return withVoiceAttempt(request.store, attemptId, () => importManualVoiceExclusively({ ...request, attemptId }));
 }
 
 async function importManualVoiceExclusively(request: ImportManualVoiceRequest): Promise<ReadyVoiceResult> {

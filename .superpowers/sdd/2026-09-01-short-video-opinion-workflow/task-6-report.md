@@ -244,3 +244,35 @@ Fixed only the three reviewed lifecycle findings. Concurrent direct requests pre
 - `git diff --check`: exit 0; informational Windows LF-to-CRLF warnings only.
 
 No live or paid provider calls were made. No blocking concern remains for this round. Task 9 cross-process locking and Task 8 managed audio binaries remain outside this fix scope.
+
+---
+
+## Independent review fix round 4
+
+Commit subject: `fix: canonicalize voice attempt identifiers` (based on `de6ab19`).
+
+### Scope and root cause
+
+Windows resolves upper/lowercase UUID paths to the same directory, but the process-local lifecycle key retained caller case and the unused-directory check used case-sensitive string membership. An uppercase manual retry could therefore enter conversion and remove a previously committed lowercase transaction on failure.
+
+### Boundary fix
+
+- A shared UUID-validating canonicalizer lowercases caller attempt IDs before public generation/import lock acquisition, path construction, provider idempotency keys, budget reservation IDs, and audit writes. The audit reader likewise canonicalizes its caller ID before constructing the audit path.
+- Directly callable lifecycle and unused-attempt helpers independently canonicalize their IDs. On Windows, existing audit/transaction directory names are compared case-insensitively, including legacy uppercase names.
+- Persisted schemas and records are not silently rewritten; the normalization applies to incoming caller identities, preserving existing stored provider idempotency keys. No costs, generic artifact paths, cleanup policy, or unrelated source-selection behavior changed.
+
+### Round-4 RED/GREEN evidence
+
+`npm test -- tests/voice/artifacts.test.ts tests/voice/generate-voice.test.ts tests/voice/manual-import.test.ts -t 'uppercase|helper lock'`
+
+- RED before production edits: exit `1`; 10 failed / 3 passed / 68 skipped. Both direct/manual uppercase competitors passed the barrier; the reused manual ID reached its failing converter; direct helper locks and ownership checks accepted aliases; uppercase identity propagated into generated/manual artifacts.
+- GREEN after the boundary fix: exit `0`; 13 passed / 68 skipped. The barrier proves rejection before competing synthesis/conversion. The committed manual retry proves zero conversion, mkdir, writes, renames, or deletion and byte-identical readable original audio. Helper tests cover both case-order lock acquisition, release, and real uppercase Windows directories in both namespaces. Source/audit tests verify canonical provider keys/output paths, directory names, report/timing/charge/reservation/result identities, uppercase audit lookup, and retry without another paid call.
+
+### Final verification
+
+- `npm test -- tests/voice`: exit `0`; 3 files / 81 tests passed.
+- `npm test`: exit `0`; 13 files / 154 tests passed (full suite run once).
+- `npm run typecheck`: exit `0`.
+- `git diff --check`: exit `0`; informational Windows LF-to-CRLF warnings only.
+
+No live or paid calls, new dependencies, or subagents were used. The process-local lock remains intentionally limited to one process; Task 9 cross-process locking and Task 8 managed audio binaries remain outside this fix scope.

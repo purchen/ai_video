@@ -10,12 +10,20 @@ import {
 } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import type { ProjectStore } from '../store/project-store';
+import { transactionIdSchema } from './schemas';
 
 const activeVoiceAttempts = new Set<string>();
 
+// Normalize caller identities, not persisted audit records: legacy provider keys
+// must retain the exact identity under which a request was originally sent.
+export function canonicalVoiceAttemptId(attemptId: string): string {
+  return transactionIdSchema.parse(attemptId).toLowerCase();
+}
+
 export async function withVoiceAttempt<T>(store: ProjectStore, attemptId: string, run: () => Promise<T>): Promise<T> {
+  const canonicalId = canonicalVoiceAttemptId(attemptId);
   const root = await realpath(store.root);
-  const key = JSON.stringify([process.platform === 'win32' ? root.toLowerCase() : root, attemptId]);
+  const key = JSON.stringify([process.platform === 'win32' ? root.toLowerCase() : root, canonicalId]);
   if (activeVoiceAttempts.has(key)) throw new Error('voice attempt is already active');
   activeVoiceAttempts.add(key);
   try {
@@ -44,6 +52,7 @@ export const nodeVoiceArtifactIo: VoiceArtifactIo = {
 };
 
 export async function assertVoiceAttemptUnused(store: ProjectStore, attemptId: string, io: VoiceArtifactIo): Promise<void> {
+  const canonicalId = canonicalVoiceAttemptId(attemptId);
   for (const namespace of ['audit', 'transactions']) {
     let entries: string[];
     try {
@@ -52,7 +61,9 @@ export async function assertVoiceAttemptUnused(store: ProjectStore, attemptId: s
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
       throw error;
     }
-    if (entries.includes(attemptId)) throw new Error('voice attempt already exists');
+    if (entries.some((entry) => (process.platform === 'win32' ? entry.toLowerCase() : entry) === canonicalId)) {
+      throw new Error('voice attempt already exists');
+    }
   }
 }
 

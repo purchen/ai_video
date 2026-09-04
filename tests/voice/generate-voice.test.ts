@@ -209,8 +209,11 @@ describe('generateVoice settlement and publication transaction', () => {
     expect(await readFile(join(directory, 'master.wav'), 'utf8')).toBe('manual committed bytes');
   });
 
-  it.each(['direct', 'manual'] as const)('excludes concurrent same-attempt %s callers before mutable audit reads', async (caller) => {
+  it.each([
+    ['direct', false], ['manual', false], ['direct', true], ['manual', true],
+  ] as const)('excludes concurrent same-attempt %s callers (uppercase alias: %s) before mutable audit reads', async (caller, uppercaseAlias) => {
     const context = await voiceContext();
+    if (uppercaseAlias) context.attemptId = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
     await createManualVoicePackage(context);
     const provider = directProvider();
     let release!: () => void;
@@ -227,21 +230,59 @@ describe('generateVoice settlement and publication transaction', () => {
     const winner = generateVoice(request);
     await started;
     let conversions = 0;
-    const competing = caller === 'direct' ? generateVoice(request) : importManualVoice({ ...context,
+    const competingId = uppercaseAlias ? context.attemptId.toUpperCase() : context.attemptId;
+    const competing = caller === 'direct' ? generateVoice({ ...request, attemptId: competingId }) : importManualVoice({ ...context,
+      attemptId: competingId,
       audioPath: 'unused.m4a',
       authorization: { schemaVersion: 1, sourceKind: 'jianying-synthetic', authorization: 'synthetic',
         voiceKind: 'synthetic', voiceId: 'narrator', syntheticIdentifier: 'jianying:narrator',
         authorizedBy: 'editor', authorizedAt: now, consentReference: 'synthetic://narrator' },
       converter: { convertToWav48k: async (_input, output) => { conversions++; await writeFile(output, 'manual bytes'); } },
     });
-    const loser = await competing.then(() => 'accepted', () => 'rejected');
+    const loser = await competing.then(() => 'accepted', (error: Error) => error.message);
     release();
     await winner;
-    expect(loser).toBe('rejected');
+    expect(loser).toBe('voice attempt is already active');
     expect(conversions).toBe(0);
     expect(provider.calls.filter((call) => call === 'synthesize')).toHaveLength(1);
     const committed = await readCommittedVoice(context.store, context.probe);
     expect(await readFile(committed.masterPath, 'utf8')).toBe('fixture pcm wav');
+  });
+
+  it('canonicalizes an uppercase attempt across provider source, paths, audit, and retry', async () => {
+    const context = await voiceContext();
+    const attemptId = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+    const provider = directProvider();
+    const request = { ...context, attemptId: attemptId.toUpperCase(), registry: ProviderRegistry.fromTtsAdapters([provider.adapter]) };
+    const result = await generateVoice(request);
+    expect(result).toMatchObject({ status: 'READY', report: { transactionId: attemptId } });
+    const idempotencyKey = `voice:topic-001:${context.approvedScript.scriptHash}:${attemptId}`;
+    expect(provider.requests.length).toBeGreaterThan(0);
+    for (const source of provider.requests) {
+      expect(source.idempotencyKey).toBe(idempotencyKey);
+      expect(source.outputPath).toBe(join(context.store.root, 'voice', 'transactions', attemptId, 'master.tmp.wav'));
+    }
+    expect(await transactionDirectories(context.store)).toEqual([attemptId]);
+    expect(await readdir(join(context.store.root, 'voice', 'audit'))).toEqual([attemptId]);
+    const auditReadPaths: string[] = [];
+    const audit = await readVoiceAttemptAudit(context.store, attemptId.toUpperCase(), {
+      ...nodeVoiceArtifactIo,
+      readFile: async (path) => { auditReadPaths.push(path); return nodeVoiceArtifactIo.readFile(path); },
+    });
+    expect(auditReadPaths).toContain(join(context.store.root, 'voice', 'audit', attemptId, 'attempt.json'));
+    expect(audit).toMatchObject({
+      attempt: { attemptId, transactionId: attemptId, idempotencyKey },
+      reservation: { attemptId, idempotencyKey },
+      settlement: { attemptId },
+      charge: { transactionId: attemptId, reservationId: attemptId, idempotencyKey },
+      result: { attemptId, transactionId: attemptId, marker: { transactionId: attemptId } },
+    });
+    await generateVoice({ ...request, attemptId });
+    expect(provider.calls.filter((call) => call === 'synthesize')).toHaveLength(1);
+    expect(context.budgetGuard.spentCny()).toBe(0.45);
+    const committed = await readCommittedVoice(context.store, context.probe);
+    expect(committed.timings.transactionId).toBe(attemptId);
+    expect(committed.charge.reservationId).toBe(attemptId);
   });
 
   it('settles an authorized charge before committing schema-bound READY artifacts', async () => {

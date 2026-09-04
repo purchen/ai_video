@@ -8,6 +8,7 @@ import { hashCanonicalJson } from '../script/hash-script';
 import { scriptNarrationText } from '../script/narration';
 import type { ProjectStore } from '../store/project-store';
 import {
+  canonicalVoiceAttemptId,
   nodeVoiceArtifactIo,
   readJson,
   sha256File,
@@ -92,7 +93,8 @@ export interface VoiceAttemptAuditBundle {
 }
 
 export async function generateVoice(request: GenerateVoiceRequest): Promise<GenerateVoiceResult> {
-  return withVoiceAttempt(request.store, transactionIdSchema.parse(request.attemptId), () => generateVoiceExclusively(request));
+  const attemptId = canonicalVoiceAttemptId(request.attemptId);
+  return withVoiceAttempt(request.store, attemptId, () => generateVoiceExclusively({ ...request, attemptId }));
 }
 
 async function generateVoiceExclusively(request: GenerateVoiceRequest): Promise<GenerateVoiceResult> {
@@ -324,8 +326,8 @@ export async function readVoiceAttemptAudit(
   attemptIdInput: string,
   artifactIo: VoiceArtifactIo = nodeVoiceArtifactIo,
 ): Promise<VoiceAttemptAuditBundle> {
+  const attemptId = canonicalVoiceAttemptId(attemptIdInput);
   const approvedScript = await readApprovedScript(store);
-  const attemptId = transactionIdSchema.parse(attemptIdInput);
   const bundle = await tryReadAttemptAudit(store, attemptId, artifactIo);
   if (!bundle) throw new Error('voice attempt audit was not found');
   assertAttemptMatches(bundle.attempt, approvedScript.script.projectId, approvedScript.scriptHash);
