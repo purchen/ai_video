@@ -2,6 +2,7 @@
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { z } from 'zod';
 import { projectManifestSchema } from '../../src/domain/schemas';
 import { ProviderRegistry } from '../../src/providers/registry';
 import { readApprovedScript } from '../../src/review/approve';
@@ -13,6 +14,20 @@ import { executeMediaTool, resolveManagedMediaTools } from '../../src/render/med
 import { runNextStage, runStage, type StageCommand, type StageDependencies } from '../../src/workflow/run-stage';
 import { fixtureDate, fixtureScript, fixtureSource } from './mvp-input';
 
+export const mvpSpeechProvenanceSchema = z.object({
+  schemaVersion: z.literal(1),
+  providerId: z.literal('windows-system-speech-fixture'),
+  model: z.literal('System.Speech / Microsoft Huihui Desktop / zh-CN / rate 2'),
+  voiceId: z.literal('Microsoft Huihui Desktop'),
+  voiceKind: z.literal('synthetic'),
+  sourceKind: z.literal('windows-built-in-synthetic'),
+  generatedAt: z.string().datetime(),
+  narrationSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  audioSha256: z.string().regex(/^[a-f0-9]{64}$/),
+  provenance: z.string().trim().min(1),
+  rightsScope: z.string().trim().min(1),
+});
+
 const fixture = join(dirname(fileURLToPath(import.meta.url)), 'mvp-project');
 
 export async function buildMvpProject(target: string) {
@@ -21,10 +36,9 @@ export async function buildMvpProject(target: string) {
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   const text = await readFile(join(fixture, 'narration.txt'), 'utf8');
   const speech = await readFile(join(fixture, 'speech.wav'));
-  const provenance = JSON.parse(await readFile(join(fixture, 'speech-provenance.json'), 'utf8'));
+  const provenance = mvpSpeechProvenanceSchema.parse(JSON.parse(await readFile(join(fixture, 'speech-provenance.json'), 'utf8')));
   if (scriptNarrationText(fixtureScript) !== text || sha256Bytes(Buffer.from(text)) !== provenance.narrationSha256
-    || sha256Bytes(speech) !== provenance.audioSha256 || provenance.voiceId !== 'Microsoft Huihui Desktop'
-    || provenance.providerId !== 'windows-system-speech-fixture' || provenance.sourceKind !== 'windows-built-in-synthetic') throw new Error('preserved speech provenance or canonical narration does not match');
+    || sha256Bytes(speech) !== provenance.audioSha256) throw new Error('preserved speech provenance or canonical narration does not match');
   const tools = await resolveManagedMediaTools();
   const audio = await tools.probe.probe(join(fixture, 'speech.wav'));
   if (audio.durationMs < 60000 || audio.durationMs > 120000) throw new Error('fixture speech must be 60–120 seconds without stretching or silent padding');
